@@ -1,0 +1,7 @@
+{
+  "name": "agy-capsule",
+  "displayName": "agy-capsule",
+  "version": "1.0.0",
+  "description": "Composer footer context window, generation speed/TTFT, prompt cache TTL, 7-category breakdown, and multi-model quota capsules.",
+  "logo": "assets/logo.svg"
+}

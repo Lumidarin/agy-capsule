@@ -1,0 +1,8 @@
+{
+  "command": "node",
+  "args": ["--no-warnings", "server.mjs"],
+  "description": "Composer footer context window, speed/TTFT, cache TTL, 7-category breakdown, and multi-model quota monitor",
+  "display_name": "agy-capsule",
+  "has_web_ui": false,
+  "restart_policy": "always"
+}

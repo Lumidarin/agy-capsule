@@ -566,25 +566,34 @@ test('1. Protobuf & stat-gated SQLite telemetry with compaction reset and zero r
     const waitTtft1 = await svcLive.getSnapshot({ convId, lang: 'en' });
     assert.equal(waitTtft1.isTurnInFlight, true);
 
-    // Simulate 40s TTFT wait with no new writes yet -> still in-flight
+    // Simulate 40s TTFT wait + preflight gen_metadata row (512K model limit before turn finishes) -> still in-flight
     fakeNow += 40_000;
+    const dbLivePre = new DatabaseSync(dbPath);
+    dbLivePre.prepare('INSERT INTO gen_metadata (idx, data) VALUES (?, ?)').run(
+      3,
+      encodeGenRow({ uncachedIn: 0, cachedIn: 0, thinkTokens: 0, outTokens: 0, maxContextTokens: 512000, lastStepIndex: 9 })
+    );
+    dbLivePre.close();
     const waitTtft2 = await svcLive.getSnapshot({ convId, lang: 'en' });
     assert.equal(waitTtft2.isTurnInFlight, true);
+    assert.equal(waitTtft2.latest.budget, 512000);
 
-    // Simulate turn completion: gen_metadata row + PLANNER_RESPONSE (step_type=2, step idx 10 > lastStepIndex 9)
+    // Simulate turn completion: billed gen_metadata row omits maxContextTokens (0) + PLANNER_RESPONSE (step_type=2)
     const dbLive2 = new DatabaseSync(dbPath);
     dbLive2.prepare('INSERT INTO gen_metadata (idx, data) VALUES (?, ?)').run(
-      3,
-      encodeGenRow({ uncachedIn: 1200, cachedIn: 161000, thinkTokens: 200, outTokens: 300, maxContextTokens: 256000, lastStepIndex: 9 })
+      4,
+      encodeGenRow({ uncachedIn: 1200, cachedIn: 161000, thinkTokens: 200, outTokens: 300, maxContextTokens: 0, lastStepIndex: 9 })
     );
     dbLive2.prepare('INSERT INTO steps (idx, step_type, metadata) VALUES (?, ?, ?)').run(10, 2, encodeStepMeta(Math.floor(fakeNow / 1000)));
     dbLive2.close();
     const settling = await svcLive.getSnapshot({ convId, lang: 'en' });
     assert.equal(settling.isTurnInFlight, true);
+    assert.equal(settling.latest.budget, 512000);
 
     fakeNow += 3_000;
     const settled = await svcLive.getSnapshot({ convId, lang: 'en' });
     assert.equal(settled.isTurnInFlight, false);
+    assert.equal(settled.latest.budget, 512000);
     svcLive.dispose();
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -622,7 +631,7 @@ test('2. Speed, TTFT, error classification, image sizing, and 7-category 100% co
   const errOverflow = core.classifyRequestError('prompt exceeds maximum context length: 256,000', { lang: 'zh-CN' });
   assert.equal(errOverflow.kind, 'context_overflow');
   assert.equal(errOverflow.serviceLimit, 256000);
-  assert.ok(errOverflow.detail.includes('256k'));
+  assert.ok(errOverflow.detail.includes('256K'));
   assert.ok(errOverflow.detail.includes('/compact'));
 
   const errRate = core.classifyRequestError('HTTP 429 rate limit exceeded, retry in 12s', { lang: 'en' });
@@ -664,10 +673,18 @@ test('2. Speed, TTFT, error classification, image sizing, and 7-category 100% co
     .reduce((acc, k) => acc + shares[k].percent, 0);
   assert.ok(Math.abs(majorSum - 100) <= 0.15, `expected ~100%, got ${majorSum}`);
 
-  assert.equal(core.fmtK(1990), '2.0k');
-  assert.equal(core.fmtK(1620), '1.6k');
-  assert.equal(core.fmtK(286100), '286k');
-  assert.equal(core.fmtColK(267700), '267.7k');
+  assert.equal(core.fmtK(202), '202');
+  assert.equal(core.fmtK(1990), '2.0K');
+  assert.equal(core.fmtK(1620), '1.6K');
+  assert.equal(core.fmtK(98555), '98.6K');
+  assert.equal(core.fmtK(100895), '100.9K');
+  assert.equal(core.fmtK(286100), '286.1K');
+  assert.equal(core.fmtK(999960), '1.0M');
+  assert.equal(core.fmtK(1260000), '1.3M');
+  assert.equal(core.fmtColK(267700), '267.7K');
+  assert.equal(core.fmtColK(1048576), '1.0M');
+  assert.equal(core.fmtPreciseK(256000), '256K');
+  assert.equal(core.fmtPreciseK(1048576), '1M');
 
   const equalShares = core.computeContextShares([
     { id: 'a', weight: 1 },
@@ -723,6 +740,7 @@ test('4. Renderer Shadow DOM mount, popovers, 3m/4m cache cooling, i18n, narrow 
   const api = h.context.__agyCapsule;
   assert.ok(api, 'window.__agyCapsule should be registered');
   assert.deepEqual(h.intervals, [30000]);
+  assert.equal(api.snapshotForTest().heroFrac, '0 / --');
 
   const cState = api.pullClientState(2000);
   assert.equal(cState.convId, '11111111-1111-1111-1111-111111111111');
@@ -797,7 +815,7 @@ test('4. Renderer Shadow DOM mount, popovers, 3m/4m cache cooling, i18n, narrow 
   assert.equal(snap.cachePct, '96%');
   assert.equal(snap.cacheBadge, '');
   assert.equal(snap.heroPct, '64% used');
-  assert.equal(snap.heroFrac, '163.8k / 256k');
+  assert.equal(snap.heroFrac, '163.8K / 256K');
   assert.equal(snap.valSpeed, '48.2 tok/s');
   assert.equal(snap.speedTier, 'Smooth');
   assert.equal(snap.valTiming, 'TTFT 0.84s · 4.20s');
@@ -806,7 +824,7 @@ test('4. Renderer Shadow DOM mount, popovers, 3m/4m cache cooling, i18n, narrow 
 
   const sr = h.host.shadowRoot;
   assert.equal(sr.querySelector('[data-val="tools"]').textContent, '30.0%');
-  assert.equal(sr.querySelector('[data-k="tools"]').textContent, '49.1k');
+  assert.equal(sr.querySelector('[data-k="tools"]').textContent, '49.1K');
   assert.equal(sr.querySelector('[data-row="tools"]').getAttribute('data-tier'), 'dom');
   assert.equal(sr.querySelector('[data-row="summaries"]').getAttribute('data-tier'), 'dim');
   assert.ok(sr.querySelector('[data-el="cacheIcon"]').innerHTML.includes('var(--agc-good)'));
@@ -818,9 +836,12 @@ test('4. Renderer Shadow DOM mount, popovers, 3m/4m cache cooling, i18n, narrow 
     'Streaming 61 tok/s · TTFT 0.84s (20%)\nOverall = Output ÷ Total time (incl. TTFT)'
   );
   assert.equal(sr.querySelector('[data-el="valOut"]').title, 'Output 202 tokens · Reply 152 + Thinking 50');
-  assert.ok(sr.querySelector('[data-el="heroPct"]').title.includes('Cached 153.6k · Fresh in 6.4k · Out 3.8k'));
-  assert.equal(sr.querySelector('[data-el="cacheRow"]').title, 'Cache hit 153,600 / 160,000 tokens · Last turn <1m ago');
-  assert.ok(sr.querySelector('[data-val="tools"]').title.includes('~49,140 tokens (30.0%)'));
+  assert.equal(
+    sr.querySelector('[data-el="heroPct"]').title,
+    '163.8K / 256K tokens (92.2K left)\nCached 153.6K · Fresh in 6.4K · Out 3.8K'
+  );
+  assert.equal(sr.querySelector('[data-el="cacheRow"]').title, 'Cache hit 153.6K / 160.0K tokens · Last turn <1m ago');
+  assert.ok(sr.querySelector('[data-val="tools"]').title.includes('~49.1K tokens (30.0%)'));
   assert.equal(sr.querySelector('[data-el="valTiming"]').title, 'TTFT 0.84s · Total 4.20s');
 
   // Active in-flight generation shows live speed on inline capsule
@@ -849,20 +870,21 @@ test('4. Renderer Shadow DOM mount, popovers, 3m/4m cache cooling, i18n, narrow 
   assert.equal(snap.pillSpeedHidden, false);
   assert.equal(snap.pillSpeedState, 'active');
   assert.equal(snap.pillSpeed, '48.2 tok/s');
-  assert.equal(snap.valOut, 'Out 2.0k');
+  assert.equal(snap.valOut, 'Out 2.0K');
+  assert.equal(sr.querySelector('[data-el="valOut"]').title, 'Output 2.0K tokens · Reply 1.9K + Thinking 50');
   assert.equal(sr.querySelector('[data-el="pillSpeed"]').getAttribute('data-tier'), 'smooth');
 
   // Cache 3m warning & 4m expired transitions (minute-granular tooltip copy)
   api.tickClockForTest(now - 30_000 + 190_000); // 190s idle (>3m)
   snap = api.snapshotForTest();
   assert.equal(snap.cacheBadge, '~1m');
-  assert.equal(sr.querySelector('[data-el="cacheRow"]').title, 'Cache hit 153,600 / 160,000 tokens · Idle 3m (expires in ~1m)');
+  assert.equal(sr.querySelector('[data-el="cacheRow"]').title, 'Cache hit 153.6K / 160.0K tokens · Idle 3m (expires in ~1m)');
 
   api.tickClockForTest(now - 30_000 + 250_000); // 250s idle (>=4m)
   snap = api.snapshotForTest();
   assert.equal(snap.cacheBadge, 'Expired');
   assert.equal(snap.cacheDeco, 'line-through');
-  assert.equal(sr.querySelector('[data-el="cacheRow"]').title, 'Cached 153,600 / 160,000 tokens · Idle 4m (>4m likely cold)');
+  assert.equal(sr.querySelector('[data-el="cacheRow"]').title, 'Cached 153.6K / 160.0K tokens · Idle 4m (>4m likely cold)');
 
   // Interactive click-to-pin + language cycle + force refresh
   sr.querySelector('[data-el="btnCtx"]').dispatchEvent({ type: 'click' });
@@ -994,6 +1016,32 @@ test('4. Renderer Shadow DOM mount, popovers, 3m/4m cache cooling, i18n, narrow 
   assert.equal(pair5h.hidden, true);
   assert.equal(pairWk.hidden, false);
   assert.equal(api.snapshotForTest().pillWk, '94%');
+  assert.equal(api.snapshotForTest().heroFrac, '0 / --');
+  assert.equal(api.snapshotForTest().heroPct, '已用 0%');
+
+  // Usage reported without model budget must show --% and <used> / -- instead of 256K fallback
+  api.applyServerState({
+    rev: 'r6b',
+    convId: '11111111-1111-1111-1111-111111111111',
+    prefs: { langMode: 'zh-TW', themeMode: 'dark' },
+    quotaGroups: lowAndArgonGroups,
+    isTurnInFlight: false,
+    scanBusy: false,
+    latest: {
+      actual: 42000,
+      budget: null,
+      input: 40000,
+      cached: 30000,
+      freshInput: 10000,
+      output: 2000,
+      lastStepEpochMs: now - 10_000,
+      errorClassification: { kind: 'none' },
+    },
+    scan: null,
+  });
+  assert.equal(api.snapshotForTest().heroPct, '已用 --%');
+  assert.equal(api.snapshotForTest().heroFrac, '42.0K / --');
+  assert.ok(sr.querySelector('[data-el="heroPct"]').title.includes('42.0K tokens (未提供上限)'));
 
   // Restore dual-window Carbon model & check trace (<0.1k / dim) tier before narrow degradation checks
   h.setModelText('Orchestrator (Carbon)');
@@ -1041,7 +1089,7 @@ test('4. Renderer Shadow DOM mount, popovers, 3m/4m cache cooling, i18n, narrow 
   assert.equal(sr.querySelector('[data-row="tools"]').getAttribute('data-tier'), 'dom');
   assert.equal(sr.querySelector('[data-row="system"]').getAttribute('data-tier'), 'act');
   assert.equal(sr.querySelector('[data-row="user"]').getAttribute('data-tier'), 'dim');
-  assert.equal(sr.querySelector('[data-k="user"]').textContent, '<0.1k');
+  assert.equal(sr.querySelector('[data-k="user"]').textContent, '<0.1K');
 
   // Verify hover bridge lives on .agc-pop-wrap (NOT .agc-pop) so scrollbars don't appear
   const rendererSrc = readFileSync(join(REPO_ROOT, 'plugins/agy-capsule/sidecars/agy_capsule/renderer_client.js'), 'utf8');
@@ -1146,11 +1194,11 @@ test('5. Manifests, logo, CDP target filter, and server.mjs standalone import va
   assert.equal(isAntigravityUiTarget({ type: 'other', url: 'https://127.0.0.1:5387/', webSocketDebuggerUrl: 'ws://127.0.0.1/page/3' }), false);
 
   const { hash } = buildRuntimeBundleWithHash(1234);
-  assert.equal(CAPSULE_VERSION, 13);
+  assert.equal(CAPSULE_VERSION, 15);
   assert.equal(needsBundleInjection(null, hash), true);
-  assert.equal(needsBundleInjection({ v: 12 }, hash), true);
-  assert.equal(needsBundleInjection({ v: 13, hash: 'stale000' }, hash), true);
-  assert.equal(needsBundleInjection({ v: 13, hash }, hash), false);
+  assert.equal(needsBundleInjection({ v: 14 }, hash), true);
+  assert.equal(needsBundleInjection({ v: 15, hash: 'stale000' }, hash), true);
+  assert.equal(needsBundleInjection({ v: 15, hash }, hash), false);
 });
 
 test('6. Tier-3 trajectory + attachment scan fusion and ui-prefs persistence', async () => {
@@ -1342,9 +1390,9 @@ test('7. v11/v12 UI: openPopover refresh, idempotent DOM writes, Xh Ym idle form
 
   // >= 60m idle formatting: Xh Ym and exact Xh
   api.tickClockForTest(now - 10_000 + 65 * 60_000);
-  assert.equal(cacheRow.title, 'Cached 100,000 / 118,000 tokens · Idle 1h 5m (>4m likely cold)');
+  assert.equal(cacheRow.title, 'Cached 100.0K / 118.0K tokens · Idle 1h 5m (>4m likely cold)');
   api.tickClockForTest(now - 10_000 + 120 * 60_000);
-  assert.equal(cacheRow.title, 'Cached 100,000 / 118,000 tokens · Idle 2h (>4m likely cold)');
+  assert.equal(cacheRow.title, 'Cached 100.0K / 118.0K tokens · Idle 2h (>4m likely cold)');
 
   // openPopover triggers immediate refresh using current clock
   // Set lastStepEpochMs back to 3m10s ago relative to Date.now() without calling renderAll yet
@@ -1414,6 +1462,7 @@ test('8. Cross-locale i18n parity, error matrix, JPEG fill-bytes & unready SQLit
     'cacheWarmTip', 'cacheWarnTip', 'cacheExpiredTip', 'cacheIdleTip',
     'speedLabelTitle', 'ttftLabelTitle', 'speedTtftDetail', 'timingTip',
     'ttftTitle', 'durTitle', 'outTitle', 'rowTipActual', 'quotaRowTip',
+    'tokensNoLimit', 'tokensLocalEst',
   ];
   for (const loc of ['en', 'zh-CN', 'zh-TW']) {
     const d = core.I18N[loc];
@@ -1485,6 +1534,7 @@ test('8. Cross-locale i18n parity, error matrix, JPEG fill-bytes & unready SQLit
     const snapEmpty = await svc.getSnapshot({ convId, lang: 'en' });
     assert.equal(snapEmpty.convId, convId);
     assert.equal(snapEmpty.latest.actual, null);
+    assert.equal(snapEmpty.latest.budget, null);
 
     // Schema-less non-empty DB must also not throw
     const db = new DatabaseSync(dbPath);

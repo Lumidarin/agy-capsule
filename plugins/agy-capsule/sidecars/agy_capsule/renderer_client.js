@@ -4,7 +4,7 @@
     return;
   }
 
-  const CAPSULE_VERSION = 13;
+  const CAPSULE_VERSION = 15;
   const LOCAL_CLOCK_INTERVAL_MS = 30_000;
   const SPEED_COOL_DELAY_MS = 15_000;
   const HOST_INLINE_STYLE =
@@ -815,7 +815,7 @@
             <!-- Row 2: Summary Line + 4px Bar -->
             <div class="agc-summary-row">
               <div class="agc-used-pct" data-el="heroPct">0% used</div>
-              <div class="agc-used-frac" data-el="heroFrac">0 / 256k</div>
+              <div class="agc-used-frac" data-el="heroFrac">0 / --</div>
             </div>
 
             <div class="agc-track" data-el="track">
@@ -1516,7 +1516,7 @@
       nextBadgeHidden = false;
       nextBadgeText = t.cacheExpiredTag;
       nextBadgeColor = 'var(--agc-danger)';
-      nextCacheTitle = t.cacheExpiredTip(cached.toLocaleString(), input.toLocaleString(), agoStr);
+      nextCacheTitle = t.cacheExpiredTip(fmtK(cached), fmtK(input), agoStr);
     } else if (hasHistory && idleSec >= 180) {
       iconTone = 'warning';
       nextIconState = 'warning';
@@ -1527,7 +1527,7 @@
       nextBadgeHidden = false;
       nextBadgeText = `~${remMin}m`;
       nextBadgeColor = '#d4940a';
-      nextCacheTitle = t.cacheWarnTip(cached.toLocaleString(), input.toLocaleString(), agoStr, remMin);
+      nextCacheTitle = t.cacheWarnTip(fmtK(cached), fmtK(input), agoStr, remMin);
     } else {
       const cacheWarmHit = Boolean(hasHistory && cacheHitPct > 0);
       nextIconState = cacheWarmHit ? 'warm' : 'idle';
@@ -1539,7 +1539,7 @@
       nextBadgeHidden = true;
       nextCacheTitle =
         hasHistory && input > 0
-          ? t.cacheWarmTip(cached.toLocaleString(), input.toLocaleString(), agoStr)
+          ? t.cacheWarmTip(fmtK(cached), fmtK(input), agoStr)
           : t.cacheIdleTip;
     }
 
@@ -1737,9 +1737,11 @@
         heroPct.textContent = t.usedPctFmt(shownPct);
         if (rawPct >= 90) heroPct.style.color = 'var(--agc-danger)';
         else if (rawPct >= 75) heroPct.style.color = 'var(--agc-warn)';
+      } else if (d?.actual != null) {
+        heroPct.textContent = d.actual === 0 ? t.usedPctFmt(0) : t.usedPctFmt('--');
       } else if (d?.estimate != null) {
         const estPct = d.budget ? Math.min(100, Math.round((d.estimate / d.budget) * 100)) : null;
-        heroPct.textContent = estPct != null ? `~${t.usedPctFmt(estPct)}` : t.approxVal(fmtPreciseK(d.estimate));
+        heroPct.textContent = estPct != null ? `~${t.usedPctFmt(estPct)}` : t.approxVal(fmtK(d.estimate));
       } else {
         heroPct.textContent = t.usedPctFmt(0);
       }
@@ -1766,8 +1768,15 @@
       const out = d.output || 0;
       const rem = Math.max(0, d.budget - d.actual);
       heroTip =
-        `${d.actual.toLocaleString()} / ${d.budget.toLocaleString()} tokens (${t.leftVal(fmtPreciseK(rem))})\n` +
-        `${t.chipCache(fmtPreciseK(cached))} · ${t.chipInput(fmtPreciseK(fresh))} · ${t.chipOutput(fmtPreciseK(out))}`;
+        `${fmtK(d.actual)} / ${fmtPreciseK(d.budget)} tokens (${t.leftVal(fmtK(rem))})\n` +
+        `${t.chipCache(fmtK(cached))} · ${t.chipInput(fmtK(fresh))} · ${t.chipOutput(fmtK(out))}`;
+    } else if (d?.actual != null) {
+      const cached = d.cached || 0;
+      const fresh = d.freshInput != null ? d.freshInput : Math.max(0, (d.input || 0) - cached);
+      const out = d.output || 0;
+      heroTip =
+        `${fmtK(d.actual)} ${t.tokensNoLimit}\n` +
+        `${t.chipCache(fmtK(cached))} · ${t.chipInput(fmtK(fresh))} · ${t.chipOutput(fmtK(out))}`;
     } else if (d?.estimate != null) {
       heroTip = t.hintEst;
     } else {
@@ -1778,20 +1787,16 @@
 
     if (heroFrac) {
       if (!state.convId) {
-        setHeroFrac(heroFrac, '0', '256k');
+        setHeroFrac(heroFrac, '0', '--');
       } else if (exceeded) {
         const lim = d?.serviceLimit || d?.budget;
         heroFrac.textContent = lim ? t.overLimit(fmtPreciseK(lim)) : t.overServerLimit;
-      } else if (d?.actual != null && d?.budget) {
-        setHeroFrac(heroFrac, fmtPreciseK(d.actual), fmtPreciseK(d.budget));
+      } else if (d?.actual != null) {
+        setHeroFrac(heroFrac, fmtK(d.actual), d.budget ? fmtPreciseK(d.budget) : '--');
       } else if (d?.estimate != null) {
-        if (d.budget) {
-          setHeroFrac(heroFrac, t.approxVal(fmtPreciseK(d.estimate)), fmtPreciseK(d.budget));
-        } else {
-          heroFrac.textContent = t.tokensLocalEst;
-        }
+        setHeroFrac(heroFrac, t.approxVal(fmtK(d.estimate)), d.budget ? fmtPreciseK(d.budget) : '--');
       } else {
-        setHeroFrac(heroFrac, '0', fmtPreciseK(d?.budget || 256000));
+        setHeroFrac(heroFrac, '0', d?.budget ? fmtPreciseK(d.budget) : '--');
       }
       heroFrac.title = heroTip;
     }
@@ -1910,8 +1915,8 @@
       }
       if (kNode) {
         if (!scan) kNode.textContent = '—';
-        else if (baseTokens <= 0) kNode.textContent = '0.0k';
-        else if (share.weight > 0 && rawEst > 0 && estTokens < 50) kNode.textContent = '<0.1k';
+        else if (baseTokens <= 0) kNode.textContent = '0.0K';
+        else if (share.weight > 0 && rawEst > 0 && estTokens < 50) kNode.textContent = '<0.1K';
         else kNode.textContent = fmtColK(estTokens);
       }
       if (row) {
@@ -1924,7 +1929,7 @@
         let tip = fullCatNames[k] || '';
         if (scan) {
           if (share.ratio > 0 && baseTokens > 0) {
-            tip += ` · ${t.rowTipActual(Math.max(1, estTokens).toLocaleString(), share.text)}`;
+            tip += ` · ${t.rowTipActual(fmtK(Math.max(1, estTokens)), share.text)}`;
           } else if (share.ratio > 0) {
             tip += ` · ${t.rowTipShare(share.text)}`;
           } else if (t.rowTipZero && !(k === 'attachment-total' && incomplete)) {
@@ -1992,9 +1997,9 @@
         const thk = sp.thinkingTokens || 0;
         const rep = sp.responseTokens != null ? sp.responseTokens : Math.max(0, sp.outputTokens - thk);
         valOut.title = t.outTitle(
-          sp.outputTokens.toLocaleString(),
-          rep.toLocaleString(),
-          thk > 0 ? thk.toLocaleString() : ''
+          fmtK(sp.outputTokens),
+          fmtK(rep),
+          thk > 0 ? fmtK(thk) : ''
         );
       } else {
         valOut.title = '';

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { getBrowserCoreScript } from './core.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const CAPSULE_VERSION = 13;
+export const CAPSULE_VERSION = 15;
 const TICK_INTERVAL_MS = 1000;
 const LIST_POLL_CONNECTED_MS = 4000;
 const LIST_POLL_DISCONNECTED_MS = 1500;

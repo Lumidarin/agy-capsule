@@ -42,7 +42,6 @@ const TIER3_DEBOUNCE_MS = 550;
 const ACTIVE_RPC_INTERVAL_MS = 1_500;
 const IN_FLIGHT_SETTLE_MS = 2_500;
 const MAX_IN_FLIGHT_WAIT_MS = 180_000;
-const DEFAULT_MAX_CONTEXT = 256_000;
 
 const TEXT_EXTENSIONS = new Set([
   '.txt', '.md', '.markdown', '.json', '.jsonl', '.csv', '.tsv',
@@ -599,13 +598,14 @@ export function createTelemetryService(options = {}) {
     const rawLastStepMs = lastStepEpochMs || maxFileMtimeMs;
 
     const turns = [];
-    let maxContextTokens = DEFAULT_MAX_CONTEXT;
+    let maxContextTokens = 0;
     for (const row of rawRows) {
       const parsed = parseGenMetadataRow(row.idx, row.data);
-      if (!parsed || parsed.inputTokens === 0) continue;
+      if (!parsed) continue;
       if (parsed.maxContextTokens > 0) {
         maxContextTokens = parsed.maxContextTokens;
       }
+      if (parsed.inputTokens === 0) continue;
       turns.push(parsed);
     }
 
@@ -638,6 +638,35 @@ export function createTelemetryService(options = {}) {
     cs.statKey = statKey;
     cs.sqliteInfo = info;
     return { ...info, statChanged: true };
+  }
+
+  function pickTailRpcSummary(tailList, options = {}) {
+    if (!Array.isArray(tailList) || tailList.length === 0) {
+      return { summary: null, chatModel: null };
+    }
+    let summary = null;
+    let chatModel = null;
+    let tailBudget = 0;
+    for (let i = tailList.length - 1; i >= 0; i--) {
+      const m = tailList[i];
+      const rawMax = Number(m?.chatModel?.chatStartMetadata?.contextWindowMetadata?.maxContextTokens || 0);
+      if (!tailBudget && rawMax > 0) tailBudget = rawMax;
+      if (!summary) {
+        const candidate = core.summarizeGeneratorMeta(m, options);
+        if (candidate) {
+          summary = candidate;
+          chatModel = m?.chatModel || null;
+        }
+      }
+      if (summary && (summary.budget || tailBudget > 0)) break;
+    }
+    if (summary && !summary.budget && tailBudget > 0) {
+      summary.budget = tailBudget;
+      if (summary.actual !== null && !summary.exceeded) {
+        summary.percent = (summary.actual / tailBudget) * 100;
+      }
+    }
+    return { summary, chatModel };
   }
 
   async function refreshTailGeneratorRpc(convId, sqliteInfo, lang, force = false) {
@@ -674,7 +703,9 @@ export function createTelemetryService(options = {}) {
         cs.settledSteps = sqliteInfo.totalSteps;
         cs.lastMutationAt = isLiveTimestamp ? now : 0;
       } else if (sqliteInfo.totalSteps > cs.settledSteps) {
-        cs.lastMutationAt = isLiveTimestamp ? now : 0;
+        if (isLiveTimestamp) {
+          cs.lastMutationAt = now;
+        }
       } else if (isLiveTimestamp) {
         cs.lastMutationAt = now;
       }
@@ -721,15 +752,11 @@ export function createTelemetryService(options = {}) {
     });
 
     if (tail && Array.isArray(tail.generatorMetadata)) {
-      let best = null;
-      for (let i = tail.generatorMetadata.length - 1; i >= 0; i--) {
-        best = core.summarizeGeneratorMeta(tail.generatorMetadata[i], {
-          lang,
-          cascadeModelConfigs: configs,
-          previousValidContext: cs.rpcLatest,
-        });
-        if (best) break;
-      }
+      const { summary: best } = pickTailRpcSummary(tail.generatorMetadata, {
+        lang,
+        cascadeModelConfigs: configs,
+        previousValidContext: cs.rpcLatest,
+      });
       if (best) {
         cs.rpcLatest = best;
       }
@@ -816,16 +843,10 @@ export function createTelemetryService(options = {}) {
           includeMessages: false,
         });
 
-        let latestModel = null;
-        let rpcMeta = null;
-        for (const m of (tail?.generatorMetadata || []).slice().reverse()) {
-          const summary = core.summarizeGeneratorMeta(m, { lang, cascadeModelConfigs: configs });
-          if (summary) {
-            rpcMeta = summary;
-            latestModel = m.chatModel;
-            break;
-          }
-        }
+        const { summary: rpcMeta, chatModel: latestModel } = pickTailRpcSummary(tail?.generatorMetadata, {
+          lang,
+          cascadeModelConfigs: configs,
+        });
 
         const system = latestModel
           ? core.measureText(
@@ -915,7 +936,8 @@ export function createTelemetryService(options = {}) {
   function mergeTelemetryLatest(sqliteInfo, rpcLatest, scanData, lang) {
     const t = sqliteInfo.latestTurn;
     const baseRpc = rpcLatest || scanData?.rpcMeta || null;
-    const budget = t?.maxContextTokens || baseRpc?.budget || DEFAULT_MAX_CONTEXT;
+    const rawBudget = sqliteInfo.maxContextTokens || t?.maxContextTokens || baseRpc?.budget || 0;
+    const budget = rawBudget > 0 ? rawBudget : null;
 
     let actual = t ? t.actualTokens : baseRpc?.actual ?? null;
     const input = t ? t.inputTokens : baseRpc?.input ?? null;
@@ -1038,6 +1060,7 @@ export function createTelemetryService(options = {}) {
       speedKey,
       errKey,
       latest.estimate || 0,
+      latest.budget || 0,
       isTurnInFlight ? '1' : '0',
       cs.scanSeq,
       cs.scanBusy ? '1' : '0',

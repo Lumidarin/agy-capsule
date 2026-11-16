@@ -450,8 +450,8 @@ export function createCapsuleCore() {
       usedPctFmt: (pct) => `已用 ${pct}%`,
       noActiveChat: '尚未开启对话',
       waitingRequestData: '等待首次模型响应',
-      tokensNoLimit: 'tokens（未提供上限）',
-      tokensLocalEst: 'tokens（本地估算）',
+      tokensNoLimit: 'tokens (未提供上限)',
+      tokensLocalEst: 'tokens (本地估算)',
       approxVal: (v) => `约 ${v}`,
       leftVal: (v) => `剩余 ${v}`,
       approxLeftVal: (v) => `约剩 ${v}`,
@@ -595,8 +595,8 @@ export function createCapsuleCore() {
       usedPctFmt: (pct) => `已用 ${pct}%`,
       noActiveChat: '尚未開啟對話',
       waitingRequestData: '等待首次模型回應',
-      tokensNoLimit: 'tokens（未提供上限）',
-      tokensLocalEst: 'tokens（本機估算）',
+      tokensNoLimit: 'tokens (未提供上限)',
+      tokensLocalEst: 'tokens (本機估算)',
       approxVal: (v) => `約 ${v}`,
       leftVal: (v) => `剩餘 ${v}`,
       approxLeftVal: (v) => `約剩 ${v}`,
@@ -809,25 +809,26 @@ export function createCapsuleCore() {
   function fmtK(n) {
     const num = Number(n || 0);
     if (!Number.isFinite(num) || num <= 0) return '0';
-    if (num < 1000) return String(Math.round(num));
-    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (num >= 10000) return Math.round(num / 1000) + 'k';
-    return (num / 1000).toFixed(1) + 'k';
+    const rounded = Math.round(num);
+    if (rounded < 1000) return String(rounded);
+    if (rounded >= 999950) return (rounded / 1000000).toFixed(1) + 'M';
+    return (rounded / 1000).toFixed(1) + 'K';
   }
 
   function fmtColK(n) {
     const num = Number(n || 0);
-    if (!Number.isFinite(num) || num <= 0) return '0.0k';
-    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    return (num / 1000).toFixed(1) + 'k';
+    if (!Number.isFinite(num) || num <= 0) return '0.0K';
+    if (num >= 999950) return (num / 1000000).toFixed(1) + 'M';
+    return (num / 1000).toFixed(1) + 'K';
   }
 
   function fmtPreciseK(n) {
     const num = Number(n || 0);
     if (!Number.isFinite(num) || num <= 0) return '0';
-    if (num < 1000) return String(Math.round(num));
-    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    const rounded = Math.round(num);
+    if (rounded < 1000) return String(rounded);
+    if (rounded >= 999950) return (rounded / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    return (rounded / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
   }
 
   function resolveModelQuota(modelIdOrName, cascadeModelConfigs, lang = 'en') {

@@ -4,7 +4,8 @@ export function classifyRequestError(value = '') {
   const diagnostic = text.replace(/https?:\/\/[^\s"'<>]+/g, '<API>').replace(/[\r\n\t]+/g, ' ').slice(0, 400);
   const result = (kind, retryAfterSec = null) => ({ kind, diagnostic, retryAfterSec });
   if (!text) return result('none');
-  if (/context cancel(?:ed|led) by user|user cancel(?:led|ed)|cancel(?:led|ed) by user|request was aborted|AbortError/i.test(text)) return result('canceled');
+  // Go context.Canceled (client aborted the stream) is always caller-side; deadlines are matched below.
+  if (/\bcontext cancel(?:ed|led)\b|user cancel(?:led|ed)|cancel(?:led|ed) by user|request was aborted|AbortError/i.test(text)) return result('canceled');
   const timeout = /context deadline exceeded|deadline exceeded|stream idle timeout/i.test(text);
   if (!timeout && /input token count(?:\s*\([^)]*\)|\s+[\d,]+)?\s+exceeds|context\s*(?:window|length|tokens?|limit|size|capacity)?.{0,35}(?:exceed|too long)|maximum context length|prompt exceeds maximum context length|prompt (?:is )?too long|max_tokens exceeded/i.test(text)) return result('context_overflow');
   if (/UNAUTHENTICATED|PERMISSION_DENIED|\b401\b|\b403\b|invalid api key|credentials expired|permission denied/i.test(text)) return result('auth_error');

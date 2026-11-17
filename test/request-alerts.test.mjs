@@ -9,6 +9,7 @@ test('request failure classification follows reported errors rather than quota p
     ['quota exceeded', 'quota_exhausted'], ['429 Too Many Requests retry in 30s', 'rate_limited'],
     ['ECONNRESET', 'network_error'], ['401 Unauthorized', 'auth_error'], ['503 Service Unavailable', 'service_unavailable'],
     ['unexpected provider failure', 'unknown'], ['context canceled by user', 'canceled'],
+    ['request failed: Post "https://<API>/v1internal:streamGenerateContent?alt=sse": context canceled', 'canceled'], ['User cancelled agent execution.', 'canceled'],
     ['input token count exceeds the maximum context length', 'context_overflow'], ['context deadline exceeded', 'network_error'],
     ['The input token count (737355) exceeds the maximum number of tokens allowed (524288)', 'context_overflow'],
     ['prompt is too long: 200001 tokens > 200000 maximum', 'context_overflow'],

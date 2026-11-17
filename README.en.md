@@ -148,14 +148,6 @@ The running plugin checks its installed code/configuration every second. Once ch
 
 The first update from an older version without automatic reload needs one manual plugin restart. After uninstalling, reload any open page that still shows the old UI. Scripts do not modify the host installation. Copying the [`agy-capsule`](./agy-capsule) folder manually also remains supported.
 
-## AGY CLI (experimental)
-
-An independent **statusline MVP (Minimum Viable Product)** shows the CLI's context percentage/window limit, latest reported output/cache-read tokens, and Gemini/Argon/3P quota balances with reset countdowns. It keeps the native status row and reduces detail on narrow terminals. Validated against real local AGY CLI 1.5.10 payloads; no desktop database or CDP dependency. TTFT, speed and thinking splits are not available in this version.
-
-From the repository root, run `node cli/install.mjs` to install/update, then restart `agy`. Requires Node.js 22+ (`node` on PATH on Windows). Run `node cli/install.mjs uninstall` to restore the previous statusline setting. Desktop installation scripts and preferences are unchanged.
-
-See [CLI setup, metric definitions and sampling evidence (Chinese)](./cli/README.md).
-
 ## Metric definitions
 
 - **Effective speed** = total output ÷ (TTFT + streaming time). It includes the wait for the first token, so it is not a pure streaming rate.

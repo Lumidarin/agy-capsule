@@ -148,14 +148,6 @@
 
 从尚不支持自动重载的旧版首次更新时，需手动重启插件一次。卸载后若页面仍留有旧 UI，重载该页面即可；脚本不修改宿主安装文件。仍可手动复制 [`agy-capsule`](./agy-capsule) 文件夹安装。
 
-## AGY CLI（实验版）
-
-新增独立的 **statusline MVP（最小可用版本）**，显示 CLI 原生 Context 比例／上限、最近 output／cache-read tokens，以及 Gemini／Argon／3P 配额池余额和重置倒计时。保留原生状态行，窄终端自动精简。基于本机 AGY CLI 1.5.10 的真实 payload，不读取桌面数据库、不依赖 CDP；暂不提供 TTFT、速度或思考拆分。
-
-在仓库根目录运行 `node cli/install.mjs` 安装／更新，然后重新打开 `agy`；需要 Node.js 22+。卸载用 `node cli/install.mjs uninstall`，恢复原 statusline 设置。桌面版安装脚本与设置不变。
-
-详见 [CLI 安装说明、指标口径和真实采样记录](./cli/README.md)。
-
 ## 数据口径
 
 - **有效速度** = 总输出 ÷（TTFT + 生成耗时），包含等待首 token 的时间，不是纯生成速率。

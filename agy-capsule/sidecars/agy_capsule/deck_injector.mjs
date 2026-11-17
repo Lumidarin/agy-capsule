@@ -66,11 +66,11 @@ function pageMount(d) {
   }
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '100') {
+  if (root.getAttribute('data-deck-ver') !== '101') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '100');
+    root.setAttribute('data-deck-ver', '101');
     root._speedActivity = null;
     root.style.cssText = [
       'display: inline-flex',
@@ -665,7 +665,17 @@ function pageMount(d) {
         // Error panel hugs its capsule's right edge; the others sit as far
         // left as the strip allows while still reaching their capsule's right edge.
         let left = grp.dataset.el === 'grpError' ? pill.right - width : Math.max(stripLeft, pill.right - width);
-        left = Math.max(8, Math.min(left, window.innerWidth - 8 - width));
+        // Stay inside every clipping ancestor (e.g. the chat input box), not just the window.
+        let minLeft = 8;
+        let maxRight = window.innerWidth - 8;
+        for (let el = grp.parentElement || grp.getRootNode().host; el && el !== document.documentElement; el = el.parentElement || el.getRootNode().host) {
+          const cs = getComputedStyle(el);
+          if (cs.overflowX === 'visible' && !/paint|strict|content/.test(cs.contain)) continue;
+          const r = el.getBoundingClientRect();
+          minLeft = Math.max(minLeft, r.left + 4);
+          maxRight = Math.min(maxRight, r.right - 4);
+        }
+        left = Math.max(minLeft, Math.min(left, maxRight - width));
         pop.style.left = (left - grp.getBoundingClientRect().left) + 'px';
       };
       grp.addEventListener('mouseenter', () => {

@@ -15,13 +15,15 @@ Context and quota capsules in the Antigravity composer footer.
 
 - **Inline dual capsules**: Embedded in the composer footer to show the current session's context usage against the model's live context limit (e.g. `256k` / `512k`, or `0 / --` before the first turn) and remaining 5h / Weekly quotas in real time.
 - **Token breakdown**: Hover to see the proportions and token counts for `Turn0`, `Read`, `Think`, and `Write`.
-- **Sidebar display settings**: Switch between statistics and settings at the top. Choose the display language (English / Simplified / Traditional Chinese, default English), independent appearance options and optional active-model highlighting. Settings language is selected separately, defaulting to Simplified Chinese; theme always follows the app. Defaults are compact spacing, ring quotas, square markers and no highlighting; four-category token calculations stay unchanged.
+- **Sidebar display settings**: Switch between statistics and settings at the top. Choose the display language (English / Simplified / Traditional Chinese, default English), independent appearance options and optional active-model highlighting. Settings language is selected separately, defaulting to Simplified Chinese; theme always follows the app. Defaults are compact spacing, ring quotas, square markers and no highlighting; four-category token calculations stay unchanged. Style options sit next to the feature switch they belong to, with a live preview below.
+- **Breakdown layouts**: The context breakdown can be turned off entirely. When on, choose columns (four side by side) or rows (GitHub-style, one item per line); turn metrics choose their own layout. In rows mode, context and turn markers (square/dot) are set separately. In columns mode, toggle name, value and percent per field in the preview and drag to reorder; hidden fields gray out and move to the bottom.
 - **Click-to-pin popovers**: Click a capsule to keep its popover open. Click again, click outside, or press `Esc` to close it; hover still works.
+- **Popover placement**: The context popover aligns to the footer's left edge; the quota popover sits as far left as possible while still covering the quota capsule's right edge; the failure popover right-aligns to its capsule. In narrow footers, popovers stay inside the composer's visible area instead of being clipped.
 - **Generation metrics**: The latest model request's effective tok/s, TTFT, recorded duration, output/response/thinking tokens, and conversation steps appear in the context popover and sidebar, with an inline speed readout. Token values use one-decimal uppercase K/M, or integers below 1,000. An independent sidebar switch enables speed breathing/cooldown, off by default: a footer dot breathes during UI activity, keeps its speed color for 15 seconds after stopping, then grays out. Red: <10 tok/s; yellow: 10–<25; green: ≥25. Speed calculations and Cache state are unchanged.
 - **Cache expiry alerts**: Turn yellow 3 minutes after the last turn with a countdown (`~1m`), and turn red at 4 minutes to mark `Cache` as expired.
 - **Cache tooltips**: Footer and sidebar Cache rows show cached/total input tokens and the age of the latest recorded activity as `<1m`, `5m`, or `1h 5m`. Opening the footer popover refreshes the tooltip immediately. This is record age, not remaining cache lifetime; the existing 3/4-minute reminder thresholds are unchanged.
 - **Detail tooltips**: Context totals and the progress track show remaining capacity and cached/uncached input. Four-category rows explain their existing accounting, and quota rows include the exact reset date/time and local timezone. Footer and sidebar share the wording without seven-category estimates or attachment scanning.
-- **Multi-model quota panel**: Automatically match the model selected in the footer (such as `Gemini`, `Claude`, `Argon`, or `Carbon`). Hover to see each group's remaining 5h and weekly quotas, plus reset countdowns.
+- **Multi-model quota panel**: Automatically match the model selected in the footer (such as `Gemini`, `Claude`, `Argon`, or `Carbon`). Hover to see each group's remaining 5h and weekly quotas, plus reset countdowns. Percentages and bars align in columns; countdowns use a compact (`4h 55m`) or localized (`4 hr 55 min`) format. Numbers and countdowns are marked do-not-translate so page-translation extensions cannot rewrite and misalign them.
 - **Optional absent-window hiding**: The sidebar's “Hide absent quota windows” switch defaults to off. When only Weekly or 5h has data, hide the other footer placeholder. Real 0% values stay visible; both placeholders remain if both windows are unknown.
 - **Context warning colors**: A separate, default-on switch colors only the capsule percentage yellow at 75% and red at 90%+. Icons and panel rows retain cache-status colors. No automatic popup or warning banner, even at 100%+.
 - **Third request-failure capsule**: A separate, default-on switch shows quota exhaustion, 429, network, authentication, service or unknown failures. User cancellation is hidden; context overflow belongs to the context color warning. Details open on hover/click, the label folds to an icon in narrow footers, and the context percentage stays intact.
@@ -31,7 +33,7 @@ Context and quota capsules in the Antigravity composer footer.
 
 ## Metric definitions
 
-Appearance controls independently select natural/matched height, compact/standard/spacious spacing, ring/bar quotas and square/dot markers. The sidebar and web page share these individual settings; preset management and settings import/export are not included.
+Appearance controls independently select natural/matched height, compact/standard/spacious spacing, panel label case, ring/bar quotas, reset countdown format, and separate column/row layouts and markers for the context breakdown and turn metrics. The sidebar and web page share these individual settings; preset management and settings import/export are not included.
 
 Capsules/popovers use Shadow DOM isolation; native Turbo/model folding retains only footer-scoped runtime styles. Database reads are reused until DB/WAL changes. Renderer code installs once and receives changed data only, while local clocks keep refreshing. Seven-category estimates and attachment scanning are excluded.
 
@@ -67,7 +69,7 @@ A separate “This turn” block in the context popover and sidebar shows model 
 
    Installation/updates sync to `~/.gemini/config/plugins/agy-capsule` (`%USERPROFILE%\.gemini\config\plugins\agy-capsule` on Windows), removing stale plugin files. Uninstall removes the plugin directory but keeps preferences.
 2. Enable **agy-capsule** in Antigravity's **Plugins** panel.
-3. Open **… → Extensions → agy-capsule** from the conversation header. Display settings appear below the sidebar statistics.
+3. Open **… → Extensions → agy-capsule** from the conversation header. Switch between the Statistics and Settings tabs at the top of the sidebar.
 
 ### Automatic reload
 
@@ -77,7 +79,7 @@ The first update from an older version without automatic reload needs one manual
 
 ## Notices
 
-- Preferences live in `~/.gemini/config/agy-capsule/settings.json`, outside the plugin installation directory.
+- Preferences live in `~/.gemini/config/agy-capsule/settings.json` (`%USERPROFILE%\.gemini\config\agy-capsule\settings.json` on Windows), outside the plugin directory, so updates and uninstalls keep them. Options missing from older files fall back to defaults.
 - Modern presentation and language options were inspired by [z21100644's PR #1](https://github.com/Lumidarin/agy-capsule/pull/1). Seven-category estimates and attachment scanning are not included; the PR has not been merged as a whole.
 
 - **Cache expiry is an estimate**: The cache status indicator (yellow warning at 3 minutes / red expired at 4 minutes) is estimated locally based on elapsed time since the last turn and is for reference only; actual cache hits depend on the server.

@@ -19,45 +19,51 @@ Context usage, multi-model quotas, cache status and generation speed in the Anti
 
 ### Context and generation metrics
 
+See at a glance how full the context is, what it is full of, and how fast the latest request generated.
+
 <img src="assets/readme/feature-context.png" width="100%" alt="Context panel: cache hit, usage, four-part breakdown, latest request and turn metrics" />
 
-- **Usage**: Measured against the live context limit of the current session and model (e.g. `256K` / `512K`); shows `0 / --` before the first turn.
-- **Breakdown**: How much is `turn0` (first turn), `read`, `think` and `write`.
-- **Latest request**: Effective speed, time to first token (TTFT) and request duration. The footer capsule shows the speed too.
-- **Turn metrics**: Since your latest message: elapsed time, request count, thinking and write tokens.
+<sub>The limit is read live for the current session and model (e.g. 256K / 512K); before the first turn it shows 0 / --. The breakdown is turn0 (first turn), read, think and write. Latest request shows effective speed, time to first token (TTFT) and request duration; turn metrics count from your latest message. See <a href="#metric-definitions">Metric definitions</a>.</sub>
 
 ### Multi-model quotas
 
+Remaining 5-hour and weekly quota for every model group, and how long until each resets.
+
 <img src="assets/readme/feature-quota.png" width="100%" alt="Quota panel: 5-hour and weekly remaining quota with reset countdowns for Gemini, Claude and Argon" />
 
-The capsule follows the model selected in the footer and shows its remaining 5-hour and weekly quota. The panel lists every group with remaining quota and reset countdowns; hover a row for the exact reset date, time and timezone.
+<sub>The capsule follows the model selected in the footer. Hover a row for the exact reset date, time and timezone.</sub>
 
 ### Cache expiry alerts
 
+Turns yellow with a countdown before the cache expires and red after, so you can follow up while it is still warm.
+
 <img src="assets/readme/feature-cache.png" width="100%" alt="Cache states: fresh, 3-minute yellow countdown, 4-minute red expiry" />
 
-Three minutes after the last turn, Cache turns yellow with a countdown (`~1m`); at four minutes it turns red to flag a likely expired cache. This is a local, time-based estimate; actual cache hits depend on the server.
+<sub>Yellow with a countdown (~1m) three minutes after the last turn, red at four. A local time-based estimate; actual cache hits depend on the server.</sub>
 
 ### Request failures
 
+Tells you why a request failed, without digging through logs.
+
 <img src="assets/readme/feature-error.png" width="100%" alt="Request-failure capsule: Rate limited, with the reason and server-reported wait in the panel" />
 
-When a request fails, a third capsule says whether it was quota exhaustion, a 429 rate limit, a network drop, an authentication problem, a busy service or an unknown error; the panel shows an explanation and the raw error. Stopping generation yourself is not a failure and shows nothing.
+<sub>Distinguishes quota exhaustion, 429 rate limits, network drops, authentication problems, busy services and unknown errors, with the raw error in the panel. Stopping generation yourself is not a failure and shows nothing.</sub>
 
 ### Narrow-footer folding
 
+Stays tidy in narrow windows, keeping the most important information longest.
+
 <img src="assets/readme/feature-narrow.gif" width="100%" alt="The composer narrows and capsules fold step by step" />
 
-As the composer narrows, the Turbo selector folds to its icon first, then speed, failure text and quota numbers fold and the model name shortens, keeping the context and failure entry points visible. Widening restores everything.
+<sub>The Turbo selector folds to its icon first, then speed, failure text and quota numbers fold and the model name shortens, keeping the context and failure entry points visible. Widening restores everything.</sub>
 
 ### Also
 
-- **Click to pin**: Click a capsule to keep its panel open; click again, click outside or press `Esc` to close.
-- **Panel placement**: The context panel aligns to the footer's left edge; quota and failure panels sit as far left as possible while covering their own capsule. In narrow footers, panels stay inside the composer instead of being clipped.
-- **Warning colors** (optional): The capsule number turns yellow at 75% context usage and red at 90%+.
-- **Light and dark**: Uses Antigravity's own color variables.
-- **Translation-safe**: Numbers and countdowns are marked do-not-translate, so page-translation extensions cannot rewrite and misalign them.
-- **No client changes**: Mounted through a native Sidecar and CDP, with styles isolated in Shadow DOM, so it keeps working after client updates.
+- **Click to pin**: Click a capsule and its panel stays open.
+- **Warning colors**: The capsule number turns yellow, then red, as the context fills up.
+- **Light and dark themes**, **translation-safe**, **no client changes**.
+
+<sub>Click again, click outside or press Esc to close a pinned panel. Context warnings trigger at 75% (yellow) and 90% (red) and can be turned off. The context panel aligns to the footer's left edge; quota and failure panels sit as far left as possible while covering their own capsule; in narrow footers, panels stay inside the composer instead of being clipped. Colors come from Antigravity's own variables. Numbers and countdowns are marked do-not-translate so translation extensions cannot misalign them. The plugin mounts through a native Sidecar and CDP with styles isolated in Shadow DOM, so it keeps working after client updates.</sub>
 
 ## Appearance
 
@@ -124,7 +130,7 @@ Edit column fields right in the preview: the switch on the right shows or hides 
   <img src="assets/readme/settings-fields-en.gif" width="480" alt="Toggling percent and reordering fields in the preview" />
 </p>
 
-Preferences live in `~/.gemini/config/agy-capsule/settings.json` (`%USERPROFILE%\.gemini\config\agy-capsule\settings.json` on Windows), outside the plugin directory, so updates and uninstalls keep them. Options missing from older files fall back to defaults.
+<sub>Preferences live in <code>~/.gemini/config/agy-capsule/settings.json</code> (<code>%USERPROFILE%\.gemini\config\agy-capsule\settings.json</code> on Windows), outside the plugin directory, so updates and uninstalls keep them. Options missing from older files fall back to defaults.</sub>
 
 ## Installation
 
@@ -136,11 +142,11 @@ Preferences live in `~/.gemini/config/agy-capsule/settings.json` (`%USERPROFILE%
    | Update | `update.bat` (pull the latest code first) | `sh update.sh` (pull the latest code first) |
    | Uninstall | `uninstall.bat` | `sh uninstall.sh` |
 
-   Installation/updates sync to `~/.gemini/config/plugins/agy-capsule` (`%USERPROFILE%\.gemini\config\plugins\agy-capsule` on Windows), removing stale plugin files. Uninstall removes the plugin directory but keeps preferences.
+   <sub>Installation/updates sync to <code>~/.gemini/config/plugins/agy-capsule</code> (<code>%USERPROFILE%\.gemini\config\plugins\agy-capsule</code> on Windows), removing stale plugin files. Uninstall removes the plugin directory but keeps preferences.</sub>
 2. Enable **agy-capsule** in Antigravity's **Plugins** panel.
 3. Open **… → Extensions → agy-capsule** from the conversation header.
 
-The UI prefers Source Han Sans and falls back to the system font; nothing extra to download.
+<sub>The UI prefers Source Han Sans and falls back to the system font; nothing extra to download.</sub>
 
 ### Automatic reload
 

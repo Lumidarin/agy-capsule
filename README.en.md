@@ -29,17 +29,26 @@ The first footer capsule: how full the context is, whether the cache is still wa
 
   <sub>Yellow with a countdown (~1m) three minutes after the last turn, red at four. A local time-based estimate; actual cache hits depend on the server.</sub>
 
-- **Usage warning**: The capsule number turns yellow, then red, as the context fills up, and returns to normal in a new conversation.
+<table><tr>
+<td width="50%" valign="top">
 
-  <img src="assets/readme/cap-usage.gif" width="80%" alt="Context usage from 31% to 76% in yellow, 93% in red, then 8% back to normal in a new conversation" />
+<b>Usage warning</b><br>The capsule number turns yellow, then red, as the context fills up, and returns to normal in a new conversation.
 
-  <sub>Yellow at 75%, red at 90% and above.</sub>
+<img src="assets/readme/cap-usage.gif" width="100%" alt="Context usage from 31% to 76% in yellow, 93% in red, then 8% back to normal in a new conversation" />
 
-- **Speed and effects**: Shows the latest request's speed; with effects on, a dot breathes while generating, keeps its color for a while after stopping, then grays out.
+<sub>Yellow at 75%, red at 90% and above.</sub>
 
-  <img src="assets/readme/cap-speed.gif" width="80%" alt="Speed appears, the dot breathes while generating, stays green after stopping, then grays out" />
+</td>
+<td width="50%" valign="top">
 
-  <sub>Shows — until the first request completes. Dot color: red below 10 tok/s, yellow from 10 to under 25, green at 25+; it keeps its color for 15 seconds after stopping. Effects are off by default.</sub>
+<b>Speed and effects</b><br>Shows the latest request's speed; with effects on, a dot breathes while generating, keeps its color for a while after stopping, then grays out.
+
+<img src="assets/readme/cap-speed.gif" width="100%" alt="Speed appears, the dot breathes while generating, stays green after stopping, then grays out" />
+
+<sub>Shows — until the first request completes. Dot color: red below 10 tok/s, yellow from 10 to under 25, green at 25+; it keeps its color for 15 seconds after stopping. Effects are off by default.</sub>
+
+</td>
+</tr></table>
 
 ## Context panel
 
@@ -47,13 +56,22 @@ Hover or click the context capsule: what fills the context, and what the latest 
 
 <sub>The limit is read live for the current session and model (e.g. 256K / 512K); before the first turn it shows 0 / --. The breakdown is turn0 (first turn), read, think and write. See <a href="#metric-definitions">Metric definitions</a>.</sub>
 
-- **Columns or rows, squares or dots**: The context breakdown and turn metrics each choose; rows mode adds a square or dot marker.
+<table><tr>
+<td width="50%" valign="top">
 
-  <img src="assets/readme/panel-layout.gif" width="60%" alt="Breakdown switching between columns, rows with squares and rows with dots" />
+<b>Columns or rows, squares or dots</b><br>The context breakdown and turn metrics each choose; rows mode adds a square or dot marker.
 
-- **Which fields columns show**: Toggle name, value and percent, and reorder them (see [Settings](#settings)).
+<img src="assets/readme/panel-layout.gif" width="100%" alt="Breakdown switching between columns, rows with squares and rows with dots" />
 
-  <img src="assets/readme/panel-fields.gif" width="60%" alt="Column fields: adding percent, reordering, hiding names" />
+</td>
+<td width="50%" valign="top">
+
+<b>Which fields columns show</b><br>Toggle name, value and percent, and reorder them (see [Settings](#settings)).
+
+<img src="assets/readme/panel-fields.gif" width="100%" alt="Column fields: adding percent, reordering, hiding names" />
+
+</td>
+</tr></table>
 
 - **Label casing**: Lowercase or title case, across all panels.
 
@@ -73,15 +91,24 @@ The capsule shows the current model's remaining 5-hour and weekly quota; the pan
 
 <sub>The capsule follows the model selected in the footer. Hover a panel row for the exact reset date, time and timezone. Optionally mark the current model's pool in the panel.</sub>
 
-- **Hide idle windows**: When a pool only has a weekly quota (Argon below), hide the empty 5-hour placeholder in the capsule.
+<table><tr>
+<td width="50%" valign="top">
 
-  <img src="assets/readme/quota-hide.gif" width="60%" alt="With Argon selected, turning the option on removes the --% placeholder" />
+<b>Hide idle windows</b><br>When a pool only has a weekly quota (Argon below), hide the empty 5-hour placeholder in the capsule.
 
-  <sub>A real 0% is never hidden; if both windows are unknown, the placeholders stay. Off by default.</sub>
+<img src="assets/readme/quota-hide.gif" width="100%" alt="With Argon selected, turning the option on removes the --% placeholder" />
 
-- **Ring or bar**:
+<sub>A real 0% is never hidden; if both windows are unknown, the placeholders stay. Off by default.</sub>
 
-  <img src="assets/readme/quota-indicator.gif" width="60%" alt="Quota panel switching between rings and bars" />
+</td>
+<td width="50%" valign="top">
+
+<b>Ring or bar</b>
+
+<img src="assets/readme/quota-indicator.gif" width="100%" alt="Quota panel switching between rings and bars" />
+
+</td>
+</tr></table>
 
 ## Error capsule
 

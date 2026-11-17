@@ -29,17 +29,26 @@
 
   <sub>距上一轮满 3 分钟变黄并显示倒计时（~1m），满 4 分钟变红。按时间在本地估算，实际命中以服务端为准。</sub>
 
-- **占用预警**：上下文快满时，胶囊数字变黄、变红；开新对话后恢复正常。
+<table><tr>
+<td width="50%" valign="top">
 
-  <img src="assets/readme/cap-usage.gif" width="80%" alt="上下文占用从 31% 到 76% 变黄、93% 变红，新对话 8% 恢复正常" />
+<b>占用预警</b><br>上下文快满时，胶囊数字变黄、变红；开新对话后恢复正常。
 
-  <sub>75% 变黄，90% 及以上变红。</sub>
+<img src="assets/readme/cap-usage.gif" width="100%" alt="上下文占用从 31% 到 76% 变黄、93% 变红，新对话 8% 恢复正常" />
 
-- **生成速度与动效**：显示最近一次请求的速度；开启动效后，生成时小圆点呼吸，停下后保持颜色一会儿再变灰。
+<sub>75% 变黄，90% 及以上变红。</sub>
 
-  <img src="assets/readme/cap-speed.gif" width="80%" alt="速度从无到有，生成时圆点呼吸，停下后保持绿色，之后变灰" />
+</td>
+<td width="50%" valign="top">
 
-  <sub>首个请求完成前显示 —。圆点颜色：低于 10 tok/s 红色，10 至 25 黄色，25 及以上绿色；停止后保色 15 秒再变灰。动效默认关闭。</sub>
+<b>生成速度与动效</b><br>显示最近一次请求的速度；开启动效后，生成时小圆点呼吸，停下后保持颜色一会儿再变灰。
+
+<img src="assets/readme/cap-speed.gif" width="100%" alt="速度从无到有，生成时圆点呼吸，停下后保持绿色，之后变灰" />
+
+<sub>首个请求完成前显示 —。圆点颜色：低于 10 tok/s 红色，10 至 25 黄色，25 及以上绿色；停止后保色 15 秒再变灰。动效默认关闭。</sub>
+
+</td>
+</tr></table>
 
 ## 上下文面板
 
@@ -47,13 +56,22 @@
 
 <sub>上限按当前会话和模型实时读取（如 256K／512K），首轮之前显示 0 / --。四类组成：turn0 首轮、read 读取、think 思考、write 写入。口径见<a href="#数据口径">数据口径</a>。</sub>
 
-- **竖列或横条，方块或圆点**：上下文明细和本轮统计各自可选；横条模式下标记可选方块或圆点。
+<table><tr>
+<td width="50%" valign="top">
 
-  <img src="assets/readme/panel-layout.gif" width="60%" alt="明细在竖列、横条方块、横条圆点之间切换" />
+<b>竖列或横条，方块或圆点</b><br>上下文明细和本轮统计各自可选；横条模式下标记可选方块或圆点。
 
-- **竖列显示哪些字段**：名称、数值、百分比逐项开关，顺序可调（操作见[设置](#设置)）。
+<img src="assets/readme/panel-layout.gif" width="100%" alt="明细在竖列、横条方块、横条圆点之间切换" />
 
-  <img src="assets/readme/panel-fields.gif" width="60%" alt="竖列字段：加上百分比、调换顺序、隐藏名称" />
+</td>
+<td width="50%" valign="top">
+
+<b>竖列显示哪些字段</b><br>名称、数值、百分比逐项开关，顺序可调（操作见[设置](#设置)）。
+
+<img src="assets/readme/panel-fields.gif" width="100%" alt="竖列字段：加上百分比、调换顺序、隐藏名称" />
+
+</td>
+</tr></table>
 
 - **大小写**：全小写或首字母大写，所有面板一起变。
 
@@ -73,15 +91,24 @@
 
 <sub>胶囊自动跟随底栏当前选中的模型。悬停面板某一行可看到具体的重置日期、时间和时区。可选在面板中标出当前模型所在的额度池。</sub>
 
-- **隐藏闲置窗口**：某个额度池只有每周额度时（如下图的 Argon），隐藏胶囊里空着的 5 小时占位。
+<table><tr>
+<td width="50%" valign="top">
 
-  <img src="assets/readme/quota-hide.gif" width="60%" alt="当前模型为 Argon，开启后胶囊中的 --% 占位消失" />
+<b>隐藏闲置窗口</b><br>某个额度池只有每周额度时（如下图的 Argon），隐藏胶囊里空着的 5 小时占位。
 
-  <sub>真实的 0% 不会被隐藏；两项都未知时仍显示占位。默认关闭。</sub>
+<img src="assets/readme/quota-hide.gif" width="100%" alt="当前模型为 Argon，开启后胶囊中的 --% 占位消失" />
 
-- **圆环或进度条**：
+<sub>真实的 0% 不会被隐藏；两项都未知时仍显示占位。默认关闭。</sub>
 
-  <img src="assets/readme/quota-indicator.gif" width="60%" alt="配额面板在圆环和进度条之间切换" />
+</td>
+<td width="50%" valign="top">
+
+<b>圆环或进度条</b>
+
+<img src="assets/readme/quota-indicator.gif" width="100%" alt="配额面板在圆环和进度条之间切换" />
+
+</td>
+</tr></table>
 
 ## 报错胶囊
 

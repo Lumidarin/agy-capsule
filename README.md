@@ -80,7 +80,7 @@ Antigravity 输入框底栏的上下文与配额胶囊。
 ## 声明
 
 - 显示设置保存在 `~/.gemini/config/agy-capsule/settings.json`（Windows 为 `%USERPROFILE%\.gemini\config\agy-capsule\settings.json`），更新和卸载插件都不会覆盖；旧文件缺少的新选项自动使用默认值。
-- 新版样式与多语言方向参考了 [z21100644 的 PR #1](https://github.com/Lumidarin/agy-capsule/pull/1)；本次未引入七类估算和附件扫描，也未整体合并该 PR。
+- 本版很多功能参考了 [z21100644 的 PR #1](https://github.com/Lumidarin/agy-capsule/pull/1)，逐项挑选后重新实现，未整体合并：显示／设置语言分离与繁体中文、独立外观选项（对齐高度、密度、额度图形、标记）、突出当前模型、点击固定弹窗、有效速度与速度动效、请求指标、Cache 悬浮说明、数字格式统一、明细 tooltip、上下文预警与请求失败胶囊、隐藏空配额窗口、窄栏折叠、Shadow DOM 隔离、数据读取缓存、CDP 推送优化，以及安装／更新／卸载脚本与自动重载。七类上下文估算和附件扫描未采纳。
 - 配额面板在网页翻译插件下溢出的问题由 [Krwaby123 的 PR #2](https://github.com/Lumidarin/agy-capsule/pull/2) 报告并给出修复思路；本版改用列对齐与不翻译标记实现，未直接合并该 PR。
 
 - **缓存过期提示仅供参考**：缓存状态（3 分钟预警 / 4 分钟过期）系根据距上一轮对话的时间间隔本地估算，实际命中情况以服务端为准。

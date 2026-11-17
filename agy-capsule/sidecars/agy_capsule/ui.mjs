@@ -59,10 +59,12 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       quotaIndicator: 'Quota indicator', ring: 'Ring', bar: 'Bar',
       quotaIndicatorTip: 'Choose a ring or a horizontal bar for remaining quota. Applies to footer and sidebar; percentages and quota calculations stay the same.',
       labelCase: 'Label casing', lowercase: 'Lowercase', titlecase: 'Title case',
+      resetFormat: 'Reset countdown', compactTime: 'Compact', localizedTime: 'Localized', localizedTimeSample: '4 hr 55 min',
+      resetDay: '{n} d', resetHour: '{n} hr', resetMinute: '{n} min', resetMinuteOnly: '{n} min', resetJoin: ' ',
     },
     'zh-CN': {
       cache: '缓存', turn0: '首轮', read: '读取', think: '思考', write: '写入',
-      used: '已用', fiveHours: '5 小时', weekly: '每周', soon: '即将重置', active: '当前',
+      used: '已用', fiveHours: '5小时', weekly: '每周', soon: '即将重置', active: '当前',
       settings: '显示设置', language: "显示语言",
       sidebarStats: '统计', sidebarSettings: '设置', sidebarNavigation: 'Sidebar 页面',
       settingsLanguage: '设置语言', highlightActiveModel: '突出当前模型',
@@ -116,10 +118,12 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       quotaIndicator: '额度图形', ring: '圆环', bar: '进度条',
       quotaIndicatorTip: '用圆环或横向进度条展示剩余额度，同步影响底栏与 sidebar；百分比和额度计算不变。',
       labelCase: '面板大小写', lowercase: '全小写', titlecase: '首字母大写',
+      resetFormat: '重置倒计时', compactTime: '简写', localizedTime: '本地化', localizedTimeSample: '4小时55分',
+      resetDay: '{n}天', resetHour: '{n}小时', resetMinute: '{n}分', resetMinuteOnly: '{n}分钟', resetJoin: '',
     },
     'zh-TW': {
       cache: '快取', turn0: '首輪', read: '讀取', think: '思考', write: '寫入',
-      used: '已用', fiveHours: '5 小時', weekly: '每週', soon: '即將重設', active: '目前',
+      used: '已用', fiveHours: '5小時', weekly: '每週', soon: '即將重設', active: '目前',
       settings: '顯示設定', language: "顯示語言",
       sidebarStats: '統計', sidebarSettings: '設定', sidebarNavigation: 'Sidebar 頁面',
       settingsLanguage: '設定語言', highlightActiveModel: '突出目前模型',
@@ -173,6 +177,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       quotaIndicator: '額度圖形', ring: '圓環', bar: '進度條',
       quotaIndicatorTip: '用圓環或橫向進度條展示剩餘額度，同步影響底欄與 sidebar；百分比和額度計算不變。',
       labelCase: '面板大小寫', lowercase: '全小寫', titlecase: '首字母大寫',
+      resetFormat: '重設倒數', compactTime: '簡寫', localizedTime: '在地化', localizedTimeSample: '4小時55分',
+      resetDay: '{n}天', resetHour: '{n}小時', resetMinute: '{n}分', resetMinuteOnly: '{n}分鐘', resetJoin: '',
     },
   };
   function locale(prefs = {}, candidates = []) {
@@ -342,7 +348,27 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     return view;
   }
   function appearance(prefs = {}) {
-    return { panelLayout: prefs.panelLayout || 'natural', density: prefs.density || 'compact', quotaIndicator: prefs.quotaIndicator || 'ring', labelCase: prefs.labelCase || 'lowercase' };
+    return { panelLayout: prefs.panelLayout || 'natural', density: prefs.density || 'compact', quotaIndicator: prefs.quotaIndicator || 'ring', labelCase: prefs.labelCase || 'lowercase', resetFormat: prefs.resetFormat === 'localized' ? 'localized' : 'compact' };
+  }
+  function formatReset(isoStr, prefs = {}, now = Date.now()) {
+    if (!isoStr) return '';
+    const diffMs = new Date(isoStr).getTime() - now;
+    if (!Number.isFinite(diffMs)) return '';
+    const t = dictionaries[systemLocale(prefs)] || dictionaries.en;
+    if (diffMs <= 0) return t.soon;
+    const totalMin = Math.floor(diffMs / 60000);
+    const d = Math.floor(totalMin / 1440);
+    const h = Math.floor((totalMin % 1440) / 60);
+    const m = totalMin % 60;
+    if (appearance(prefs).resetFormat === 'localized') {
+      const unit = (key, n) => t[key].replace('{n}', n);
+      if (d > 0) return unit('resetDay', d) + t.resetJoin + unit('resetHour', h);
+      if (h > 0) return unit('resetHour', h) + t.resetJoin + unit('resetMinute', m);
+      return unit('resetMinuteOnly', Math.max(1, m));
+    }
+    if (d > 0) return d + 'd ' + String(h).padStart(2, '0') + 'h';
+    if (h > 0) return h + 'h ' + String(m).padStart(2, '0') + 'm';
+    return Math.max(1, m) + 'm';
   }
   function apply(root, prefs = {}) {
     root.style.colorScheme = '';
@@ -373,7 +399,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     return t;
   }
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  return { version: 54, dictionaries, locale, systemLocale, apply, appearance, escapeHtml, formatTokens, cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
+  return { version: 56, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens, cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
 }
 
-export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 54) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;
+export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 56) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;

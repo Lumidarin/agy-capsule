@@ -248,7 +248,7 @@ function resolveLatestConvId(preferredId) {
 
 async function makeEmptyContextResult() {
   return {
-    uiVersion: 91,
+    uiVersion: 94,
     turnSpeed: null,
     turnMetrics: null,
     requestError: classifyRequestError(),
@@ -294,7 +294,7 @@ async function inspectConversation(convId, exact = false) {
   const snapshot = conversationCache.read(join(CONV_DIR, `${targetId}.db`));
   if (!snapshot) return await makeEmptyContextResult();
   return {
-    uiVersion: 91,
+    uiVersion: 94,
     ...snapshot,
     prefs: settingsStore.read(),
     quotaGroups: await fetchQuotaGroups(),
@@ -534,8 +534,31 @@ const UI_HTML = `<!DOCTYPE html>
     }
     .panel {
       width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
       min-width: 0;
       padding: 4px 2px;
+      container-type: inline-size;
+      container-name: stats;
+    }
+    .stats-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      align-items: start;
+      min-width: 0;
+    }
+    .stats-context {
+      min-width: 0;
+    }
+    .stats-quota {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: calc(var(--agy-section-gap, 6px) + 4px);
+      align-items: start;
+      min-width: 0;
+    }
+    .divider:has(+ #quota-root:empty) {
+      display: none;
     }
     .cache-bar {
       display: flex;
@@ -553,8 +576,8 @@ const UI_HTML = `<!DOCTYPE html>
       align-items: center;
       gap: 5px;
       font-weight: 500;
-      color: var(--foreground, #18181b);
-      color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent);
+      color: var(--foreground, #ebebeb);
+      color: color-mix(in srgb, var(--foreground, #ebebeb) 88%, transparent);
       white-space: nowrap;
     }
     .cache-left > .dot {
@@ -593,8 +616,8 @@ const UI_HTML = `<!DOCTYPE html>
     }
     .used-pct > #used-pct {
       font-weight: 500;
-      color: var(--foreground, #18181b);
-      color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent);
+      color: var(--foreground, #ebebeb);
+      color: color-mix(in srgb, var(--foreground, #ebebeb) 88%, transparent);
     }
     .used-fraction {
       margin-left: auto;
@@ -694,8 +717,8 @@ const UI_HTML = `<!DOCTYPE html>
       overflow-wrap: anywhere;
       font-size: 13.5px;
       font-weight: 500;
-      color: var(--foreground, #18181b);
-      color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent);
+      color: var(--foreground, #ebebeb);
+      color: color-mix(in srgb, var(--foreground, #ebebeb) 88%, transparent);
       margin-bottom: 4px;
     }
     .quota-bucket {
@@ -706,8 +729,7 @@ const UI_HTML = `<!DOCTYPE html>
     }
     .quota-line1 {
       display: grid;
-      grid-template-columns: 54px 58px minmax(48px, max-content);
-      justify-content: start;
+      grid-template-columns: 54px minmax(58px, 1fr) minmax(46px, auto);
       align-items: center;
       column-gap: 8px;
       font-size: 13.5px;
@@ -717,11 +739,11 @@ const UI_HTML = `<!DOCTYPE html>
       color: var(--muted-foreground, #8e8e93);
       white-space: nowrap;
       overflow: hidden;
-      text-overflow: clip;
+      text-overflow: ellipsis;
       min-width: 0;
     }
     .quota-mid {
-      text-align: left;
+      text-align: right;
       color: var(--muted-foreground, #8e8e93);
       white-space: nowrap;
     }
@@ -737,7 +759,7 @@ const UI_HTML = `<!DOCTYPE html>
     .sidebar-content { padding: 12px 14px; }
     .sidebar-view[hidden] { display: none; }
     .sidebar-nav { position: sticky; top: 0; z-index: 20; margin: -12px -14px 10px; padding: 8px 14px; background: var(--background, #141414); border-bottom: 1px solid color-mix(in srgb, var(--border, rgba(142,142,147,.24)) 65%, transparent); }
-    .sidebar-tabs { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; padding: 2.5px; border-radius: 7px; background: color-mix(in srgb, var(--foreground, #ebebeb) 6%, var(--background, #141414)); border: 1px solid color-mix(in srgb, var(--foreground, #ebebeb) 10%, transparent); }
+    .sidebar-tabs { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; max-width: 1120px; margin: 0 auto; padding: 2.5px; border-radius: 7px; background: color-mix(in srgb, var(--foreground, #ebebeb) 6%, var(--background, #141414)); border: 1px solid color-mix(in srgb, var(--foreground, #ebebeb) 10%, transparent); }
     .sidebar-tabs button { position: relative; z-index: 1; min-width: 0; min-height: 26px; padding: 3px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground, #8e8e93); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; transition: color .15s ease; }
     .sidebar-tabs button[aria-selected="true"] { color: var(--foreground, #ebebeb); font-weight: 600; }
     .sidebar-tabs button:hover { color: var(--foreground, #ebebeb); }
@@ -867,20 +889,19 @@ const UI_HTML = `<!DOCTYPE html>
     @media (prefers-reduced-motion: reduce) {
       .setting-card *, .setting-card *::before, .setting-card *::after { animation: none !important; transition: none !important; }
     }
-    .quota-meter { display: inline-block; flex: 1; min-width: 0; max-width: 68px; height: 4px; background: rgba(142,142,147,.24); border-radius: 99px; overflow: hidden; }
+    .quota-meter { display: inline-block; flex: 1; min-width: 20px; max-width: none; height: 4px; background: rgba(142,142,147,.24); border-radius: 99px; overflow: hidden; }
     .quota-meter > span { display: block; height: 100%; border-radius: inherit; }
     .generation-block { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border, rgba(142,142,147,.24)); color: var(--muted-foreground, #8e8e93); font-variant-numeric: tabular-nums; }
     .generation-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; align-items: baseline; }
     .generation-row { display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; font-size: 13.5px; font-weight: 400; color: var(--muted-foreground, #8e8e93); }
     [data-generation-row="speed"] { justify-self: end; }
     .generation-row > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .generation-row > :last-child { flex-shrink: 0; white-space: nowrap; font-weight: 500; color: var(--foreground, #18181b); color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent); }
+    .generation-row > :last-child { flex-shrink: 0; white-space: nowrap; font-weight: 500; color: var(--foreground, #ebebeb); color: color-mix(in srgb, var(--foreground, #ebebeb) 88%, transparent); }
     [data-generation-row="timing"] > :last-child { font-weight: 400; color: var(--muted-foreground, #8e8e93); }
-    .generation-heading { margin-bottom: 8px; font-size: 13.5px; font-weight: 500; color: var(--foreground, #18181b); color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent); }
+    .generation-heading { margin-bottom: 8px; font-size: 13.5px; font-weight: 500; color: var(--foreground, #ebebeb); color: color-mix(in srgb, var(--foreground, #ebebeb) 88%, transparent); }
     .generation-row[hidden], [data-generation-group][hidden] { display: none; }
     .panel .list { row-gap: var(--agy-row-gap); }
-    .panel .quota-group { margin: 0; }
-    .panel .quota-group + .quota-group { margin-top: calc(var(--agy-section-gap) + 4px); padding-top: 0; border-top: 0; }
+    .panel .quota-group { margin: 0; min-width: 0; }
     .panel .quota-group-title { margin-bottom: var(--agy-row-gap); }
     .panel .quota-bucket { margin-bottom: var(--agy-row-gap); }
     .panel .quota-bucket:last-child { margin-bottom: 0; }
@@ -888,8 +909,46 @@ const UI_HTML = `<!DOCTYPE html>
     .panel [data-generation-block]:not([hidden]) + [data-turn-metrics-block] { border-top: 0; padding-top: 0; margin-top: var(--agy-section-gap); }
     .panel .generation-grid { row-gap: var(--agy-row-gap); }
     .panel .generation-heading { margin-bottom: var(--agy-row-gap); }
-    body[data-quota-indicator="bar"] .quota-right { min-width: 0; }
-    body[data-quota-indicator="bar"] .quota-line1 { grid-template-columns: 54px 104px minmax(48px, max-content); }
+    body[data-quota-indicator="bar"] .quota-right { min-width: 0; justify-content: flex-start; }
+    body[data-quota-indicator="bar"] .quota-right > span:first-child { min-width: 34px; text-align: right; }
+    body[data-quota-indicator="bar"] .quota-line1 { grid-template-columns: 54px minmax(0, 1fr) minmax(46px, auto); }
+    body[data-language^="zh"] .quota-line1 { grid-template-columns: 42px minmax(58px, 1fr) minmax(46px, auto); }
+    body[data-language^="zh"][data-quota-indicator="bar"] .quota-line1 { grid-template-columns: 42px minmax(0, 1fr) minmax(46px, auto); }
+    .quota-group:not(:has(.quota-mid:not(:empty))) .quota-line1 { grid-template-columns: 54px minmax(0, 1fr); }
+    body[data-language^="zh"] .quota-group:not(:has(.quota-mid:not(:empty))) .quota-line1 { grid-template-columns: 42px minmax(0, 1fr); }
+    .quota-group:not(:has(.quota-mid:not(:empty))) .quota-mid { display: none; }
+    @container stats (min-width: 420px) {
+      .stats-layout {
+        gap: calc(var(--agy-section-gap, 6px) + 6px);
+      }
+      .stats-context,
+      .panel .quota-group {
+        padding: calc(var(--agy-pad-y, 8px) + 2px) calc(var(--agy-pad-x, 10px) + 2px);
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--border, rgba(142, 142, 147, 0.24)) 72%, transparent);
+        background: color-mix(in srgb, var(--foreground, #ebebeb) 3%, transparent);
+      }
+      .divider {
+        display: none;
+      }
+      .stats-quota {
+        grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+        gap: calc(var(--agy-section-gap, 6px) + 4px);
+      }
+    }
+    @container stats (min-width: 540px) {
+      .stats-layout {
+        grid-template-columns: clamp(250px, 36%, 350px) minmax(0, 1fr);
+        align-items: start;
+      }
+      .stats-layout:has(> #quota-root:empty) {
+        grid-template-columns: minmax(0, 380px);
+        justify-content: center;
+      }
+      .stats-quota {
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      }
+    }
     body[data-label-case="lowercase"] .panel .cache-left,
     body[data-label-case="lowercase"] .panel .used-pct,
     body[data-label-case="lowercase"] .panel .item-left > span:last-child,
@@ -909,52 +968,55 @@ const UI_HTML = `<!DOCTYPE html>
     </div>
   </div>
   <div class="panel sidebar-view" id="sidebar-stats" role="tabpanel" aria-labelledby="sidebar-tab-stats" tabindex="0">
-    <div class="cache-bar" id="row-cached">
-      <div class="cache-left"><span data-i18n="cache">Cache</span><span class="cache-pct" id="val-cache-hit">0%</span><span class="dot" id="dot-cached" style="display:inline-flex;align-items:center;justify-content:center;background:transparent"></span></div>
-      <div class="cache-k" id="val-cache-hit-k"></div>
+    <div class="stats-layout">
+      <section class="stats-context">
+        <div class="cache-bar" id="row-cached">
+          <div class="cache-left"><span data-i18n="cache">Cache</span><span class="cache-pct" id="val-cache-hit">0%</span><span class="dot" id="dot-cached" style="display:inline-flex;align-items:center;justify-content:center;background:transparent"></span></div>
+          <div class="cache-k" id="val-cache-hit-k"></div>
+        </div>
+
+        <div class="summary-row">
+          <div class="used-pct" data-context-tip="overview"><span id="used-pct">0%</span> <span data-i18n="used">used</span></div>
+          <div class="used-fraction" id="used-fraction" data-context-tip="overview">0 / --</div>
+        </div>
+
+        <div class="progress-track" id="progress-track" data-context-tip="overview">
+          <div class="seg" id="seg-turn0" style="width: 0%; background: #d4940a"></div>
+          <div class="seg" id="seg-read" style="width: 0%; background: #388bfd"></div>
+          <div class="seg" id="seg-think" style="width: 0%; background: #00b386"></div>
+          <div class="seg" id="seg-out" style="width: 0%; background: #e86a24"></div>
+        </div>
+
+        <div class="list">
+          <div class="item-row" id="row-turn0" data-context-tip="turn0">
+            <div class="item-left"><span class="dot" style="background:#d4940a"></span><span data-i18n="turn0">Turn0</span></div>
+            <div class="item-k" id="val-turn0-k">0</div>
+          </div>
+
+          <div class="item-row" id="row-read" data-context-tip="read">
+            <div class="item-left"><span class="dot" style="background:#388bfd"></span><span data-i18n="read">Read</span></div>
+            <div class="item-k" id="val-read-k">0</div>
+          </div>
+
+          <div class="item-row" id="row-think" data-context-tip="think">
+            <div class="item-left"><span class="dot" style="background:#00b386"></span><span data-i18n="think">Think</span></div>
+            <div class="item-k" id="val-think-k">0</div>
+          </div>
+
+          <div class="item-row" id="row-out" data-context-tip="write">
+            <div class="item-left"><span class="dot" style="background:#e86a24"></span><span data-i18n="write">Write</span></div>
+            <div class="item-k" id="val-out-k">0</div>
+          </div>
+        </div>
+
+        <div class="generation-block" data-generation-block>
+          ${presentation.generationMarkup()}
+        </div>
+        ${presentation.turnMetricsMarkup()}
+      </section>
+      <div class="divider"></div>
+      <div id="quota-root" class="stats-quota"></div>
     </div>
-
-    <div class="summary-row">
-      <div class="used-pct" data-context-tip="overview"><span id="used-pct">0%</span> <span data-i18n="used">used</span></div>
-      <div class="used-fraction" id="used-fraction" data-context-tip="overview">0 / --</div>
-    </div>
-
-    <div class="progress-track" id="progress-track" data-context-tip="overview">
-      <div class="seg" id="seg-turn0" style="width: 0%; background: #d4940a"></div>
-      <div class="seg" id="seg-read" style="width: 0%; background: #388bfd"></div>
-      <div class="seg" id="seg-think" style="width: 0%; background: #00b386"></div>
-      <div class="seg" id="seg-out" style="width: 0%; background: #e86a24"></div>
-    </div>
-
-    <div class="list">
-      <div class="item-row" id="row-turn0" data-context-tip="turn0">
-        <div class="item-left"><span class="dot" style="background:#d4940a"></span><span data-i18n="turn0">Turn0</span></div>
-        <div class="item-k" id="val-turn0-k">0</div>
-      </div>
-
-      <div class="item-row" id="row-read" data-context-tip="read">
-        <div class="item-left"><span class="dot" style="background:#388bfd"></span><span data-i18n="read">Read</span></div>
-        <div class="item-k" id="val-read-k">0</div>
-      </div>
-
-      <div class="item-row" id="row-think" data-context-tip="think">
-        <div class="item-left"><span class="dot" style="background:#00b386"></span><span data-i18n="think">Think</span></div>
-        <div class="item-k" id="val-think-k">0</div>
-      </div>
-
-      <div class="item-row" id="row-out" data-context-tip="write">
-        <div class="item-left"><span class="dot" style="background:#e86a24"></span><span data-i18n="write">Write</span></div>
-        <div class="item-k" id="val-out-k">0</div>
-      </div>
-    </div>
-
-    <div class="generation-block" data-generation-block>
-      ${presentation.generationMarkup()}
-    </div>
-    ${presentation.turnMetricsMarkup()}
-    <div class="divider"></div>
-
-    <div id="quota-root"></div>
   </div>
 
   <section class="settings sidebar-view" id="sidebar-settings" role="tabpanel" aria-labelledby="sidebar-tab-settings" tabindex="0" hidden>
@@ -986,6 +1048,10 @@ const UI_HTML = `<!DOCTYPE html>
     ${renderPickCard('labelCase', '', 2, [
       ['lowercase', 'lowercase', 'aa'],
       ['titlecase', 'titlecase', 'Aa'],
+    ], true)}
+    ${renderPickCard('resetFormat', '', 2, [
+      ['compact', 'compactTime', '4h 55m'],
+      ['localized', 'localizedTime', '<span data-i18n="localizedTimeSample"></span>'],
     ], true)}
 
     <div class="settings-scope" data-settings-scope="features" data-i18n="featuresSection"></div>
@@ -1178,19 +1244,6 @@ const UI_HTML = `<!DOCTYPE html>
       return presentation.formatTokens(n);
     }
 
-    function formatResetShort(isoStr) {
-      if (!isoStr) return '';
-      const diffMs = new Date(isoStr).getTime() - Date.now();
-      if (diffMs <= 0) return labels.soon;
-      const totalMin = Math.floor(diffMs / 60000);
-      const d = Math.floor(totalMin / 1440);
-      const h = Math.floor((totalMin % 1440) / 60);
-      const m = totalMin % 60;
-      if (d > 0) return d + 'd ' + String(h).padStart(2, '0') + 'h';
-      if (h > 0) return h + 'h ' + String(m).padStart(2, '0') + 'm';
-      return Math.max(1, m) + 'm';
-    }
-
     function makeRingSvg(frac) {
       const clamped = Math.max(0, Math.min(1, Number(frac || 0)));
       const r = 6.5;
@@ -1235,7 +1288,7 @@ const UI_HTML = `<!DOCTYPE html>
                     .replace(/\\s*limit\\b/gi, '')
                     .replace(/\\b5h(?:ours)?\\b/gi, '5 Hours')
                     .trim();
-          const resetShort = formatResetShort(b.resetTime);
+          const resetShort = presentation.formatReset(b.resetTime, prefs);
           const pctLeft = Math.round((b.remainingFraction || 0) * 100);
           html += '<div class="quota-bucket">';
           html += '  <div class="quota-line1" data-quota-tooltip="' + presentation.escapeHtml(JSON.stringify({ pool: formatGroupTitle(g.displayName), window: b.window, displayName: b.displayName, remainingFraction: b.remainingFraction, resetTime: b.resetTime })) + '">';
@@ -1244,8 +1297,8 @@ const UI_HTML = `<!DOCTYPE html>
             ? '<span class="quota-meter"><span style="width:' + Math.max(0, Math.min(100, pctLeft)) + '%;background:' + color + '"></span></span>'
             : makeRingSvg(b.remainingFraction);
           html += '    <span class="quota-label">' + presentation.escapeHtml(baseLabel) + '</span>';
-          html += '    <span class="quota-right"><span>' + pctLeft + '%</span>' + indicator + '</span>';
-          html += '    <span class="quota-mid">' + resetShort + '</span>';
+          html += '    <span class="quota-right"><span class="notranslate" translate="no">' + pctLeft + '%</span>' + indicator + '</span>';
+          html += '    <span class="quota-mid notranslate" translate="no">' + presentation.escapeHtml(resetShort) + '</span>';
           html += '  </div>';
           html += '</div>';
         }
@@ -1269,7 +1322,7 @@ const UI_HTML = `<!DOCTYPE html>
         const res = await fetch('/api/context' + qStr, { method: 'GET', headers });
         const d = await res.json();
         if (d.error) return;
-        if (d.uiVersion && d.uiVersion !== 91) {
+        if (d.uiVersion && d.uiVersion !== 94) {
           window.location.reload();
           return;
         }

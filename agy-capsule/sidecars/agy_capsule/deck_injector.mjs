@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { createPresentation, getPresentationScript } from './ui.mjs';
 
-const { escapeHtml, formatTokens, appearance, cacheView } = createPresentation();
+const { escapeHtml, formatTokens, appearance, formatReset, cacheView } = createPresentation();
 
 const INTERVAL_MS = 1000;
 const INSTANCE_TS = Date.now();
@@ -66,11 +66,11 @@ function pageMount(d) {
   }
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '93') {
+  if (root.getAttribute('data-deck-ver') !== '95') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '93');
+    root.setAttribute('data-deck-ver', '95');
     root._speedActivity = null;
     root.style.cssText = [
       'display: inline-flex',
@@ -399,55 +399,68 @@ function pageMount(d) {
           width: max-content;
         }
         #deck-metrics-strip[data-quota-indicator="bar"] .dk-quota-pop {
-          width: 228px;
+          min-width: 228px;
         }
-        #deck-metrics-strip .dk-q-group {
-          margin-bottom: 8px;
+        /* One grid for the whole popover; groups, rows and the pct+indicator
+           cell are subgrids, so every column lines up across all groups. */
+        #deck-metrics-strip .dk-quota-pop > .dk-panel-content {
+          display: grid;
+          grid-template-columns: minmax(54px, max-content) max-content max-content max-content;
+          column-gap: 8px;
+          align-content: start;
         }
-        #deck-metrics-strip .dk-q-group:last-child {
-          margin-bottom: 0;
+        #deck-metrics-strip[data-quota-indicator="bar"] .dk-quota-pop > .dk-panel-content {
+          grid-template-columns: minmax(54px, max-content) max-content minmax(48px, 1fr) max-content;
+        }
+        #deck-metrics-strip[data-language^="zh"] .dk-quota-pop > .dk-panel-content {
+          grid-template-columns: minmax(42px, max-content) max-content max-content max-content;
+        }
+        #deck-metrics-strip[data-language^="zh"][data-quota-indicator="bar"] .dk-quota-pop > .dk-panel-content {
+          grid-template-columns: minmax(42px, max-content) max-content minmax(48px, 1fr) max-content;
+        }
+        #deck-metrics-strip .dk-q-group,
+        #deck-metrics-strip .dk-q-row {
+          grid-column: 1 / -1;
+          display: grid;
+          grid-template-columns: subgrid;
+          align-items: center;
         }
         #deck-metrics-strip .dk-q-title {
+          grid-column: 1 / -1;
           font-size: 13.5px;
           font-weight: 500;
           line-height: 1.25;
           color: var(--foreground, #18181b);
           color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent);
-          margin-bottom: 0px;
         }
         #deck-metrics-strip .dk-q-row {
-          display: grid;
-          grid-template-columns: minmax(54px, auto) 50px 48px;
-          align-items: center;
-          column-gap: 8px;
           font-size: 13.5px;
           font-variant-numeric: tabular-nums;
-          margin-bottom: 2px;
-        }
-        #deck-metrics-strip .dk-q-row:last-child {
-          margin-bottom: 0;
         }
         #deck-metrics-strip .dk-q-label {
           color: var(--muted-foreground, #8e8e93);
           white-space: nowrap;
         }
         #deck-metrics-strip .dk-q-mid {
+          grid-column: 4;
           text-align: left;
           color: var(--muted-foreground, #8e8e93);
           white-space: nowrap;
         }
         #deck-metrics-strip .dk-q-right {
-          display: flex;
-          justify-content: flex-end;
+          grid-column: 2 / 4;
+          display: grid;
+          grid-template-columns: subgrid;
           align-items: center;
-          gap: 5px;
+          column-gap: 5px;
           color: var(--muted-foreground, #8e8e93);
           white-space: nowrap;
         }
         /* Optional presentation inspired by z21100644/agy-capsule PR #1.
            Both styles use the existing four-category telemetry, unchanged. */
         #deck-metrics-strip[data-highlight-active-model="true"] .dk-q-group[data-active="false"] { opacity: .7; }
-        #deck-metrics-strip .dk-q-meter { flex: 1; min-width: 24px; height: 4px; border-radius: 99px; overflow: hidden; background: rgba(142,142,147,.24); }
+        #deck-metrics-strip .dk-q-pct { justify-self: end; }
+        #deck-metrics-strip .dk-q-meter { min-width: 24px; height: 4px; border-radius: 99px; overflow: hidden; background: rgba(142,142,147,.24); }
         #deck-metrics-strip .dk-q-meter > span { display: block; height: 100%; border-radius: inherit; }
         #deck-metrics-strip .dk-q-active { display: none; width: 4px; height: 4px; flex-shrink: 0; border-radius: 50%; background: currentColor; margin-left: 4px; vertical-align: middle; align-self: center; }
         #deck-metrics-strip[data-highlight-active-model="true"] .dk-q-group[data-active="true"] .dk-q-active { display: inline-block; }
@@ -460,11 +473,10 @@ function pageMount(d) {
         #deck-metrics-strip .dk-q-group { margin: 0; }
         #deck-metrics-strip .dk-q-group + .dk-q-group { margin-top: calc(var(--agy-section-gap) + 4px); padding-top: 0; border-top: 0; }
         #deck-metrics-strip .dk-q-title { margin-bottom: var(--agy-row-gap); }
-        #deck-metrics-strip .dk-q-row { grid-template-columns: minmax(54px, auto) minmax(82px, 1fr) minmax(48px, max-content); column-gap: 8px; margin-bottom: var(--agy-row-gap); }
-        #deck-metrics-strip[data-quota-indicator="ring"] .dk-q-row { grid-template-columns: minmax(54px, auto) 56px minmax(48px, auto); }
+        #deck-metrics-strip .dk-q-row { margin-bottom: var(--agy-row-gap); }
         #deck-metrics-strip .dk-q-row:last-child { margin-bottom: 0; }
-        #deck-metrics-strip[data-panel-layout="matched"] .dk-ctx-pop > .dk-panel-content,
-        #deck-metrics-strip[data-panel-layout="matched"] .dk-quota-pop > .dk-panel-content { height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
+        #deck-metrics-strip[data-panel-layout="matched"] .dk-ctx-pop > .dk-panel-content { height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
+        #deck-metrics-strip[data-panel-layout="matched"] .dk-quota-pop > .dk-panel-content { height: 100%; align-content: space-between; }
         #deck-metrics-strip[data-label-case="lowercase"] .dk-cache-left,
         #deck-metrics-strip[data-label-case="lowercase"] .dk-used-pct,
         #deck-metrics-strip[data-label-case="lowercase"] .dk-item-left > [data-i18n],
@@ -1084,19 +1096,6 @@ function fmtColK(n) {
   return formatTokens(n);
 }
 
-function formatResetShort(isoStr) {
-  if (!isoStr) return '';
-  const diffMs = new Date(isoStr).getTime() - Date.now();
-  if (diffMs <= 0) return 'soon';
-  const totalMin = Math.floor(diffMs / 60000);
-  const d = Math.floor(totalMin / 1440);
-  const h = Math.floor((totalMin % 1440) / 60);
-  const m = totalMin % 60;
-  if (d > 0) return d + 'd ' + String(h).padStart(2, '0') + 'h';
-  if (h > 0) return h + 'h ' + String(m).padStart(2, '0') + 'm';
-  return Math.max(1, m) + 'm';
-}
-
 function quotaColor(frac) {
   const clamped = Math.max(0, Math.min(1, Number(frac || 0)));
   const pctLeft = Math.round(clamped * 100);
@@ -1187,7 +1186,7 @@ function toView(d) {
                 .replace(/\s*limit\b/gi, '')
                 .replace(/\b5h(?:ours)?\b/gi, '5 Hours')
                 .trim();
-      const resetShort = formatResetShort(b.resetTime);
+      const resetShort = formatReset(b.resetTime, d.prefs);
       const pctLeft = Math.round((b.remainingFraction || 0) * 100);
       const pctStr = pctLeft + '%';
 
@@ -1201,8 +1200,8 @@ function toView(d) {
         ? '<span class="dk-q-meter"><span style="width:' + Math.max(0, Math.min(100, pctLeft)) + '%;background:' + color + '"></span></span>'
         : makeRingSvg(b.remainingFraction);
       quotaHtml += '  <span class="dk-q-label"' + (labelKey ? ' data-i18n="' + labelKey + '"' : '') + '>' + escapeHtml(baseLabel) + '</span>';
-      quotaHtml += '  <span class="dk-q-right"><span>' + pctLeft + '%</span>' + indicator + '</span>';
-      quotaHtml += '  <span class="dk-q-mid">' + resetShort + '</span>';
+      quotaHtml += '  <span class="dk-q-right"><span class="dk-q-pct notranslate" translate="no">' + pctLeft + '%</span>' + indicator + '</span>';
+      quotaHtml += '  <span class="dk-q-mid notranslate" translate="no">' + escapeHtml(resetShort) + '</span>';
       quotaHtml += '</div>';
     }
     quotaHtml += '</div>';
@@ -1301,10 +1300,10 @@ function installRuntime(owner, hash) {
 }
 
 export function buildRuntimeBundle(owner = INSTANCE_TS) {
-  const functions = [fmtK, fmtColK, formatResetShort, quotaColor, makeRingSvg, formatGroupTitle, toView, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
+  const functions = [fmtK, fmtColK, quotaColor, makeRingSvg, formatGroupTitle, toView, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
   const source = getPresentationScript() + '\n' + functions;
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
-  const code = `(()=>{const INSTANCE_TS=${Number(owner)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${getPresentationScript()}\nconst {escapeHtml,formatTokens,appearance,cacheView}=globalThis.__agyCapsulePresentation;\n${functions}\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;
+  const code = `(()=>{const INSTANCE_TS=${Number(owner)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${getPresentationScript()}\nconst {escapeHtml,formatTokens,appearance,formatReset,cacheView}=globalThis.__agyCapsulePresentation;\n${functions}\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;
   return { code, hash };
 }
 

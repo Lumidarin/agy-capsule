@@ -115,6 +115,8 @@ test('system language resolution and explicit language selection', () => {
   assert.equal(ui.locale({}, ['zh-Hant-TW']), 'zh-TW');
   assert.equal(ui.locale({}, ['zh-CN']), 'zh-CN');
   assert.equal(ui.locale({ language: 'en' }, ['zh-TW']), 'en');
+  assert.equal(ui.dictionaries['zh-CN'].fiveHours, '5小时');
+  assert.equal(ui.dictionaries['zh-TW'].fiveHours, '5小時');
   for (const dict of Object.values(ui.dictionaries)) {
     assert.deepEqual(Object.keys(dict), Object.keys(ui.dictionaries.en));
   }
@@ -274,4 +276,45 @@ test('sidebar settings use flat dividers, same-row appearance blocks, refined ca
   assert.equal(settingsNode.textContent, '显示语言');
   ui.apply(root, { language: 'en', labelCase: 'titlecase' });
   assert.equal(root.dataset.labelCase, 'titlecase');
+});
+
+test('sidebar stats uses container-responsive layout and fluid quota rows without panelLayout height stretching', () => {
+  assert.match(UI_HTML, /class="stats-layout"/);
+  assert.match(UI_HTML, /class="stats-context"/);
+  assert.match(UI_HTML, /id="quota-root" class="stats-quota"/);
+  assert.match(UI_HTML, /\.panel\s*\{[^}]*container-type:\s*inline-size;\s*container-name:\s*stats;/s);
+  assert.match(UI_HTML, /@container stats \(min-width:\s*420px\)/);
+  assert.match(UI_HTML, /@container stats \(min-width:\s*540px\)/);
+  assert.match(UI_HTML, /\.quota-meter\s*\{[^}]*max-width:\s*none;/s);
+  assert.match(UI_HTML, /body\[data-quota-indicator="bar"\] \.quota-line1\s*\{\s*grid-template-columns:\s*54px minmax\(0,\s*1fr\)/);
+});
+
+test('reset countdown format is a user setting and is shielded from page translators', () => {
+  const ui = createPresentation();
+  const now = Date.parse('2026-11-17T00:00:00Z');
+  const at = (min) => new Date(now + min * 60000).toISOString();
+  assert.equal(DEFAULT_SETTINGS.resetFormat, 'compact');
+  assert.equal(ui.formatReset(at(4 * 60 + 55), { language: 'zh-CN' }, now), '4h 55m');
+  assert.equal(ui.formatReset(at(5 * 1440 + 11 * 60), { language: 'en' }, now), '5d 11h');
+  assert.equal(ui.formatReset(at(4 * 60), { language: 'en' }, now), '4h 00m');
+  assert.equal(ui.formatReset(at(4 * 60 + 55), { language: 'zh-CN', resetFormat: 'localized' }, now), '4小时55分');
+  assert.equal(ui.formatReset(at(5 * 1440 + 11 * 60), { language: 'zh-TW', resetFormat: 'localized' }, now), '5天11小時');
+  assert.equal(ui.formatReset(at(3), { language: 'zh-CN', resetFormat: 'localized' }, now), '3分钟');
+  assert.equal(ui.formatReset(at(4 * 60 + 55), { language: 'en', resetFormat: 'localized' }, now), '4 hr 55 min');
+  assert.equal(ui.formatReset(at(-1), { language: 'zh-CN' }, now), '即将重置');
+  assert.equal(ui.formatReset(''), '');
+
+  const view = toView({ quotaGroups: [{ displayName: 'Gemini Models', buckets: [{ window: '5h', remainingFraction: 1, resetTime: at(300) }] }], prefs: { quotaIndicator: 'bar' } });
+  assert.match(view.quotaHtml, /class="dk-q-pct notranslate" translate="no">100%</);
+  assert.match(view.quotaHtml, /class="dk-q-mid notranslate" translate="no">/);
+  assert.match(UI_HTML, /class="quota-mid notranslate" translate="no"/);
+  assert.match(UI_HTML, /data-setting-card="resetFormat"/);
+});
+
+test('footer quota popover shares one column grid across groups so percentages and bars align', () => {
+  const source = readFileSync(new URL('../agy-capsule/sidecars/agy_capsule/deck_injector.mjs', import.meta.url), 'utf8');
+  assert.match(source, /\.dk-quota-pop > \.dk-panel-content \{\s*display: grid;/);
+  assert.match(source, /\.dk-q-row \{\s*grid-column: 1 \/ -1;\s*display: grid;\s*grid-template-columns: subgrid;/);
+  assert.match(source, /\.dk-q-right \{\s*grid-column: 2 \/ 4;\s*display: grid;\s*grid-template-columns: subgrid;/);
+  assert.doesNotMatch(source, /\.dk-q-row \{[^}]*grid-template-columns: minmax/);
 });

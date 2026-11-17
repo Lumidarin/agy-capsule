@@ -165,7 +165,7 @@ test('context and turn four-column strips share equal CSS grid tracks so vertica
   assert.match(deckCode, /#deck-metrics-strip \.turn-bar-list\s*\{[^}]*grid-template-columns:\s*minmax\(calc\(\(100% - 12px\) \/ 4\),\s*max-content\)\s*minmax\(0,\s*1fr\)\s*calc\(\(100% - 12px\) \/ 4\)\s*calc\(\(100% - 12px\) \/ 4\);/s);
   assert.match(UI_HTML, /\.list,\s*\.turn-bar-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/s);
   assert.match(UI_HTML, /\.turn-bar-list\s*\{[^}]*grid-template-columns:\s*minmax\(calc\(\(100% - 18px\) \/ 4\),\s*max-content\)\s*minmax\(0,\s*1fr\)\s*calc\(\(100% - 18px\) \/ 4\)\s*calc\(\(100% - 18px\) \/ 4\);/s);
-  assert.match(UI_HTML, /\.pv-detail-bars\s*\{[^}]*display:\s*grid;\s*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/s);
+  assert.match(UI_HTML, /data-preview-group="turn"[^]*?class="pv-detail-card pv-live"><div class="turn-bar-list">/);
   assert.match(ui.turnMetricsMarkup(), /class="turn-bar-short"[^>]*data-i18n="turnReqsShort"[^>]*>Re</);
   assert.match(deckCode, /@container\s*\(max-width:\s*39px\)/);
   assert.match(UI_HTML, /@container\s*\(max-width:\s*39px\)/);

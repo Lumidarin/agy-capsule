@@ -59,6 +59,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       quotaIndicator: 'Quota indicator', ring: 'Ring', bar: 'Bar',
       quotaIndicatorTip: 'Choose a ring or a horizontal bar for remaining quota. Applies to footer and sidebar; percentages and quota calculations stay the same.',
       labelCase: 'Label casing', lowercase: 'Lowercase', titlecase: 'Title case',
+      contextLayout: 'Context breakdown', turnLayout: 'Turn metrics style', layoutColumns: 'Columns', layoutRows: 'Rows', contextMarker: 'Context marker', turnMarker: 'Turn marker', showContextBreakdown: 'Context breakdown', markerSquare: 'Square', markerDot: 'Dot',
+      columnLabel: 'Names in columns', columnValue: 'Values in columns', columnPercent: 'Percentages in columns', fieldName: 'Name', fieldValue: 'Value', fieldPercent: '%', fieldDragTip: 'Drag to reorder; the switch hides or shows this line.',
       resetFormat: 'Reset countdown', compactTime: 'Compact', localizedTime: 'Localized', localizedTimeSample: '4 hr 55 min',
       resetDay: '{n} d', resetHour: '{n} hr', resetMinute: '{n} min', resetMinuteOnly: '{n} min', resetJoin: ' ',
     },
@@ -118,6 +120,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       quotaIndicator: '额度图形', ring: '圆环', bar: '进度条',
       quotaIndicatorTip: '用圆环或横向进度条展示剩余额度，同步影响底栏与 sidebar；百分比和额度计算不变。',
       labelCase: '面板大小写', lowercase: '全小写', titlecase: '首字母大写',
+      contextLayout: '上下文明细', turnLayout: '本轮统计样式', layoutColumns: '竖线', layoutRows: '横条', contextMarker: '上下文标记', turnMarker: '本轮标记', showContextBreakdown: '上下文明细', markerSquare: '方块', markerDot: '圆点',
+      columnLabel: '竖线显示名称', columnValue: '竖线显示数值', columnPercent: '竖线显示百分比', fieldName: '名称', fieldValue: '数值', fieldPercent: '百分比', fieldDragTip: '拖动调整顺序，开关控制这一行显示或隐藏。',
       resetFormat: '重置倒计时', compactTime: '简写', localizedTime: '本地化', localizedTimeSample: '4小时55分',
       resetDay: '{n}天', resetHour: '{n}小时', resetMinute: '{n}分', resetMinuteOnly: '{n}分钟', resetJoin: '',
     },
@@ -177,6 +181,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       quotaIndicator: '額度圖形', ring: '圓環', bar: '進度條',
       quotaIndicatorTip: '用圓環或橫向進度條展示剩餘額度，同步影響底欄與 sidebar；百分比和額度計算不變。',
       labelCase: '面板大小寫', lowercase: '全小寫', titlecase: '首字母大寫',
+      contextLayout: '上下文明細', turnLayout: '本輪統計樣式', layoutColumns: '豎線', layoutRows: '橫條', contextMarker: '上下文標記', turnMarker: '本輪標記', showContextBreakdown: '上下文明細', markerSquare: '方塊', markerDot: '圓點',
+      columnLabel: '豎線顯示名稱', columnValue: '豎線顯示數值', columnPercent: '豎線顯示百分比', fieldName: '名稱', fieldValue: '數值', fieldPercent: '百分比', fieldDragTip: '拖動調整順序，開關控制這一行顯示或隱藏。',
       resetFormat: '重設倒數', compactTime: '簡寫', localizedTime: '在地化', localizedTimeSample: '4小時55分',
       resetDay: '{n}天', resetHour: '{n}小時', resetMinute: '{n}分', resetMinuteOnly: '{n}分鐘', resetJoin: '',
     },
@@ -348,7 +354,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     return view;
   }
   function appearance(prefs = {}) {
-    return { panelLayout: prefs.panelLayout || 'natural', density: prefs.density || 'compact', quotaIndicator: prefs.quotaIndicator || 'ring', labelCase: prefs.labelCase || 'lowercase', resetFormat: prefs.resetFormat === 'localized' ? 'localized' : 'compact' };
+    return { panelLayout: prefs.panelLayout || 'natural', density: prefs.density || 'compact', quotaIndicator: prefs.quotaIndicator || 'ring', labelCase: prefs.labelCase || 'lowercase', resetFormat: prefs.resetFormat === 'localized' ? 'localized' : 'compact', contextLayout: prefs.contextLayout === 'rows' ? 'rows' : 'columns', turnLayout: prefs.turnLayout === 'rows' ? 'rows' : 'columns', contextMarker: prefs.contextMarker === 'dot' ? 'dot' : 'square', turnMarker: prefs.turnMarker === 'dot' ? 'dot' : 'square', showContextBreakdown: String(prefs.showContextBreakdown !== false), columnLabel: String(prefs.columnLabel !== false), columnValue: String(prefs.columnValue !== false), columnPercent: String(prefs.columnPercent === true) };
   }
   function formatReset(isoStr, prefs = {}, now = Date.now()) {
     if (!isoStr) return '';
@@ -377,6 +383,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     }
     const visual = appearance(prefs);
     for (const [key, value] of Object.entries(visual)) root.dataset[key] = value;
+    const fieldOrder = String(prefs.columnOrder || 'label,value,percent').split(',');
+    for (const field of ['label', 'value', 'percent']) root.style.setProperty('--agy-order-' + field, String(Math.max(0, fieldOrder.indexOf(field))));
     const scale = { compact: [4, 6, 8, 10], standard: [6, 8, 10, 12], spacious: [8, 11, 12, 14] }[visual.density] || [4, 6, 8, 10];
     for (const [index, key] of ['--agy-row-gap', '--agy-section-gap', '--agy-pad-y', '--agy-pad-x'].entries()) root.style.setProperty(key, scale[index] + 'px');
     root.dataset.highlightActiveModel = prefs.highlightActiveModel === true ? 'true' : 'false';
@@ -399,7 +407,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     return t;
   }
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  return { version: 56, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens, cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
+  return { version: 60, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens, cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
 }
 
-export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 56) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;
+export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 60) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;

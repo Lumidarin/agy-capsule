@@ -248,7 +248,7 @@ function resolveLatestConvId(preferredId) {
 
 async function makeEmptyContextResult() {
   return {
-    uiVersion: 94,
+    uiVersion: 96,
     turnSpeed: null,
     turnMetrics: null,
     requestError: classifyRequestError(),
@@ -294,7 +294,7 @@ async function inspectConversation(convId, exact = false) {
   const snapshot = conversationCache.read(join(CONV_DIR, `${targetId}.db`));
   if (!snapshot) return await makeEmptyContextResult();
   return {
-    uiVersion: 94,
+    uiVersion: 96,
     ...snapshot,
     prefs: settingsStore.read(),
     quotaGroups: await fetchQuotaGroups(),
@@ -507,6 +507,35 @@ const renderPickCard = (key, tip, cols, items, inlineIconsOnly = false) => inlin
     ${tip ? `<div class="metric-help" role="tooltip" data-i18n="${tip}"></div>` : ''}
   </div>`;
 
+// Segmented option control styled like the settings switches.
+// Icon options are labelled for screen readers via data-pick-label.
+const renderSeg = (key, options) => `<div class="setting-seg" role="group">${options.map(([value, labelKey, icon]) => `<button type="button" class="setting-seg-opt" data-pick-setting="${key}" data-pick-value="${value}" data-pick-label="${labelKey}">${icon}</button>`).join('')}</div>`;
+const LAYOUT_OPTIONS = [
+  ['columns', 'layoutColumns', '<span class="seg-ico seg-ico-cols" aria-hidden="true"><i></i><i></i><i></i></span>'],
+  ['rows', 'layoutRows', '<span class="seg-ico seg-ico-rows" aria-hidden="true"><i></i><i></i><i></i></span>'],
+];
+const MARKER_OPTIONS = [
+  ['square', 'markerSquare', '<span class="seg-ico seg-ico-marker" aria-hidden="true"></span>'],
+  ['dot', 'markerDot', '<span class="seg-ico seg-ico-marker seg-ico-dot" aria-hidden="true"></span>'],
+];
+// Column-field editor shown inside the context preview: one row per field
+// (name / value / percent), visible rows first in the saved order, hidden rows
+// struck through at the bottom. Shared with the page script via toString().
+function renderFieldEditor(prefs, labels) {
+  const items = [['turn0', '#d4940a', '14.6K', '3%'], ['read', '#388bfd', '120K', '23%'], ['think', '#00b386', '30.8K', '6%'], ['write', '#e86a24', '16.1K', '3%']];
+  const keys = { label: 'columnLabel', value: 'columnValue', percent: 'columnPercent' };
+  const names = { label: 'fieldName', value: 'fieldValue', percent: 'fieldPercent' };
+  const order = String(prefs.columnOrder || 'label,value,percent').split(',');
+  const on = field => prefs[keys[field]] === true;
+  const sorted = [...order.filter(on), ...order.filter(field => !on(field))];
+  return sorted.map(field => `<div class="pv-field-row" data-field="${field}" data-on="${on(field)}"${on(field) ? ' draggable="true"' : ''} title="${labels.fieldDragTip || ''}">`
+    + `<span class="pv-field-grip" aria-hidden="true"></span>`
+    + items.map(([key, color, value, pct]) => `<span class="pv-field-cell" style="--pv-c:${color}">${field === 'label' ? (labels[key] || key) : field === 'value' ? value : pct}</span>`).join('')
+    + `<button type="button" class="pv-field-toggle" role="switch" aria-checked="${on(field)}" aria-label="${labels[names[field]] || field}" data-toggle-setting="${keys[field]}"></button></div>`).join('');
+}
+const PV_CONTEXT_ITEMS = [['turn0', '#d4940a', '14.6K', '3%'], ['read', '#388bfd', '120K', '23%'], ['think', '#00b386', '30.8K', '6%'], ['write', '#e86a24', '16.1K', '3%']];
+const PV_TURN_ITEMS = [['turnLabel', '42s'], ['turnReqsLabel', '2'], ['turnThinking', '640'], ['turnWrite', '1.4K']];
+
 const UI_HTML = `<!DOCTYPE html>
 <html>
 <head>
@@ -660,10 +689,13 @@ const UI_HTML = `<!DOCTYPE html>
       row-gap: 2px;
       min-width: 0;
     }
-    .item-left {
-      display: contents;
+    .item-body {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
     }
-    .item-left > span:last-child, .turn-bar-label, .turn-bar-short {
+    .item-label, .turn-bar-label, .turn-bar-short {
       color: var(--muted-foreground, #8e8e93);
       font-size: 13.5px;
       line-height: 1.25;
@@ -677,7 +709,7 @@ const UI_HTML = `<!DOCTYPE html>
       .turn-bar-item[data-turn-row="requests"] .turn-bar-label { display: none; }
       .turn-bar-item[data-turn-row="requests"] .turn-bar-short { display: block; }
     }
-    .item-left > .dot, .turn-bar-line {
+    .item-row > .dot, .turn-bar-line {
       grid-row: 1 / span 2;
       align-self: stretch;
       width: 2.5px;
@@ -693,7 +725,8 @@ const UI_HTML = `<!DOCTYPE html>
     .dot-cached { background: #2b7fff; }
     .dot-uncached { background: #f97316; }
     .dot-meta { background: rgba(142, 142, 147, 0.55); }
-    .item-k, .turn-bar-val {
+    .item-row > .dot { grid-row: 1; }
+    .item-k, .item-pct, .turn-bar-val {
       grid-column: 2;
       color: var(--muted-foreground, #8e8e93);
       white-space: nowrap;
@@ -785,11 +818,6 @@ const UI_HTML = `<!DOCTYPE html>
     .pv-detail-pop { overflow: hidden; max-height: 120px; opacity: 1; margin: 2px 0 6px; transition: max-height .2s ease, opacity .18s ease, margin .2s ease; }
     .pv-detail-pop[data-open="false"] { max-height: 0; opacity: 0; margin: 0; pointer-events: none; }
     .pv-detail-card { padding: 7px 9px; border-radius: 7px; border: 1px solid color-mix(in srgb, var(--border, rgba(142,142,147,.28)) 70%, transparent); background: color-mix(in srgb, var(--foreground, #ebebeb) 4%, var(--background, #141414)); font-size: 11.5px; color: var(--muted-foreground, #8e8e93); font-variant-numeric: tabular-nums; }
-    .pv-detail-bars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; gap: 6px; }
-    .pv-tb-item { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 4px; row-gap: 1.5px; min-width: 0; }
-    .pv-tb-line { grid-row: 1 / span 2; align-self: stretch; width: 2px; margin: 1.5px 0; border-radius: 99px; background: color-mix(in srgb, var(--muted-foreground, #8e8e93) 55%, transparent); }
-    .pv-tb-lbl, .pv-tb-val { line-height: 1.2; white-space: nowrap; }
-    .pv-tb-val { grid-column: 2; }
     .setting-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 22px; }
     .setting-head > label, .setting-label { font-size: 13px; color: var(--foreground, #ebebeb); min-width: 0; }
     .setting-lang-label { display: inline-flex; align-items: center; gap: 5px; }
@@ -816,6 +844,43 @@ const UI_HTML = `<!DOCTYPE html>
     .pv-pick-grid { display: grid; gap: 5px; }
     .pv-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .pv-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .setting-opts { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+    .setting-option-card:not([data-layout="columns"]) [data-for-layout="columns"],
+    .setting-option-card:not([data-layout="rows"]) [data-for-layout="rows"] { display: none; }
+    .setting-option-card[data-checked="false"] .setting-opts { opacity: .45; pointer-events: none; }
+    .setting-option-card .setting-help-dot { margin-left: auto; }
+    .setting-opts-extra { display: inline-flex; }
+    .setting-seg { display: inline-flex; flex-shrink: 0; padding: 2px; gap: 2px; border-radius: 6px; background: color-mix(in srgb, var(--foreground, #ebebeb) 6%, transparent); border: 1px solid color-mix(in srgb, var(--foreground, #ebebeb) 12%, transparent); }
+    .setting-seg-opt { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 17px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--muted-foreground, #8e8e93); font: inherit; cursor: pointer; transition: background .18s ease, color .18s ease, border-color .18s ease; }
+    .setting-seg-opt:hover { color: var(--foreground, #ebebeb); }
+    .setting-seg-opt[data-active="true"] { background: color-mix(in srgb, var(--foreground, #ebebeb) 14%, var(--card, #222225)); border-color: color-mix(in srgb, var(--foreground, #ebebeb) 18%, transparent); color: #4ea84e; }
+    .setting-seg-opt:focus-visible, .pv-field-toggle:focus-visible { outline: 2px solid #388bfd; outline-offset: 1px; }
+    .pv-detail-pop[data-layout="rows"] > [data-for-layout="columns"],
+    .pv-detail-pop[data-layout="columns"] > [data-for-layout="rows"] { display: none; }
+    .pv-fields { display: flex; flex-direction: column; }
+    .pv-field-row { display: grid; grid-template-columns: 8px repeat(4, minmax(0, 1fr)) 22px; align-items: center; column-gap: 6px; padding: 1px 0; border-radius: 4px; transition: box-shadow .12s ease; }
+    .pv-field-row[draggable="true"] { cursor: grab; }
+    .pv-field-row[data-dragging="true"] { opacity: .5; }
+    .pv-field-row[data-drop="before"] { box-shadow: inset 0 2px 0 #4ea84e; }
+    .pv-field-row[data-drop="after"] { box-shadow: inset 0 -2px 0 #4ea84e; }
+    .pv-field-grip { width: 6px; height: 10px; opacity: .55; background-image: radial-gradient(currentColor 1px, transparent 1.2px); background-size: 3px 3.4px; }
+    .pv-field-row[data-on="false"] .pv-field-grip { visibility: hidden; }
+    .pv-field-cell { min-width: 0; padding-left: 5px; border-left: 2px solid var(--pv-c); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pv-field-row[data-on="false"] .pv-field-cell { border-left-color: transparent; text-decoration: line-through; opacity: .5; }
+    .pv-field-toggle { position: relative; justify-self: end; width: 22px; height: 12px; padding: 0; border-radius: 99px; background: rgba(78, 168, 78, .24); border: 1px solid rgba(78, 168, 78, .65); cursor: pointer; transition: background .18s ease, border-color .18s ease; }
+    .pv-field-toggle::after { content: ""; position: absolute; top: 1px; left: 11px; width: 8px; height: 8px; border-radius: 50%; background: #4ea84e; transition: left .18s cubic-bezier(.22,1,.36,1), background .18s ease; }
+    .pv-field-toggle[aria-checked="false"] { background: color-mix(in srgb, var(--foreground, #ebebeb) 13%, transparent); border-color: color-mix(in srgb, var(--foreground, #ebebeb) 16%, transparent); }
+    .pv-field-toggle[aria-checked="false"]::after { left: 1px; background: var(--muted-foreground, #8e8e93); }
+    .seg-ico { display: inline-flex; width: 11px; height: 9px; }
+    .seg-ico > i { background: currentColor; border-radius: 1px; }
+    .seg-ico-cols { justify-content: space-between; }
+    .seg-ico-cols > i { width: 1.5px; height: 100%; }
+    .seg-ico-rows { flex-direction: column; justify-content: space-between; }
+    .seg-ico-rows > i { width: 100%; height: 1.5px; }
+    .seg-ico-marker { width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
+    .seg-ico-dot { border-radius: 50%; }
+    .pv-live .item-label, .pv-live .item-k, .pv-live .item-pct, .pv-live .turn-bar-label, .pv-live .turn-bar-val { font-size: 11.5px; }
+    .pv-live .list, .pv-live .turn-bar-list { row-gap: 4px; }
     .pv-pick-inline { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; }
     .pv-swatch { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; min-height: 27px; padding: 4px 6px; border-radius: 5px; border: 1px solid var(--border, rgba(142,142,147,.28)); background: var(--card, #222225); color: var(--muted-foreground, #8e8e93); font: inherit; font-size: 11px; cursor: pointer; transition: border-color .12s ease, color .12s ease; }
     .pv-swatch-icon { min-width: 38px; padding: 4px 10px; }
@@ -847,28 +912,28 @@ const UI_HTML = `<!DOCTYPE html>
     [data-setting-card="highlightActiveModel"][data-checked="true"] .pv-qm-dot { opacity: 1; transform: scale(1); }
     /* Hide absent quota windows: unchecked shows --%, checked hides --% while keeping 0% */
     .pv-hide-quota { display: flex; align-items: center; gap: 6px; }
-    .pv-hq-pill { flex: 1; justify-content: center; gap: 0; }
+    .pv-hq-pill { flex: 0 0 auto; gap: 0; }
     .pv-hq-miss, .pv-hq-zero, .pv-hq-keep { display: inline-flex; align-items: center; gap: 3px; overflow: hidden; white-space: nowrap; }
     .pv-hq-miss { max-width: 56px; opacity: 1; margin-right: 6px; transition: max-width .22s ease, opacity .18s ease, margin-right .22s ease; }
     .pv-hq-zero { margin-right: 6px; color: #ef4444; font-weight: 600; }
     [data-setting-card="hideUnavailableQuota"][data-checked="true"] .pv-hq-miss { max-width: 0; opacity: 0; margin-right: 0; }
     /* Cache expiry warning: unchecked all neutral, checked 3m+ yellow icon, 4m+ red icon */
     .pv-cache-warn { display: flex; align-items: center; gap: 6px; }
-    .pv-cache-warn .pv-pill { flex: 1; justify-content: center; }
+    .pv-cache-warn .pv-pill { flex: 0 0 auto; }
     .pv-cache-warn .pv-svg { transition: color .18s ease; }
     [data-setting-card="showCacheWarnings"][data-checked="true"] .pv-ca-2 .pv-svg { color: #d4940a; }
     [data-setting-card="showCacheWarnings"][data-checked="true"] .pv-ca-3 .pv-svg { color: #e06c75; }
     /* Context warning colors: normal stays neutral; only 75% / 90% change color. */
     .pv-ctx-warn { display: flex; align-items: center; gap: 6px; }
-    .pv-ctx-warn .pv-pill { flex: 1; justify-content: center; }
+    .pv-ctx-warn .pv-pill { flex: 0 0 auto; }
     .pv-cw-val { color: var(--muted-foreground, #8e8e93); font-weight: 400; transition: color .18s ease; }
     [data-setting-card="showContextWarnings"][data-checked="true"] .pv-cw-2 .pv-cw-val { color: #d4940a; font-weight: 600; }
     [data-setting-card="showContextWarnings"][data-checked="true"] .pv-cw-3 .pv-cw-val { color: #e06c75; font-weight: 600; }
     /* Request failure capsule: unchecked hides 3rd error pill, checked shows it */
     .pv-err-strip { display: flex; align-items: center; gap: 6px; }
-    .pv-err-strip .pv-pill { flex: 1; justify-content: center; }
-    .pv-pill-err { color: #e06c75; background: rgba(224,108,117,.14); font-weight: 600; max-width: 120px; opacity: 1; overflow: hidden; transition: max-width .22s ease, opacity .18s ease, padding .22s ease, flex .22s ease; }
-    [data-setting-card="showRequestErrors"][data-checked="false"] .pv-pill-err { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; flex: 0; }
+    .pv-err-strip .pv-pill { flex: 0 0 auto; }
+    .pv-pill-err { color: #e06c75; background: rgba(224,108,117,.14); font-weight: 600; max-width: 120px; opacity: 1; overflow: hidden; transition: max-width .22s ease, opacity .18s ease, padding .22s ease; }
+    [data-setting-card="showRequestErrors"][data-checked="false"] .pv-pill-err { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; }
     .pv-req-line { display: flex; }
     .pv-req-pill { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 8px; transition: opacity .18s ease; }
     .pv-req-pill b { font-weight: 500; color: color-mix(in srgb, var(--foreground, #ebebeb) 88%, transparent); }
@@ -949,9 +1014,34 @@ const UI_HTML = `<!DOCTYPE html>
         grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
       }
     }
+    body:not([data-context-layout="rows"]) .item-pct { display: none; }
+    body[data-column-percent="true"]:not([data-context-layout="rows"]) .item-pct { display: block; }
+    body[data-column-label="false"]:not([data-context-layout="rows"]) .item-label,
+    body[data-column-value="false"]:not([data-context-layout="rows"]) .item-k { display: none; }
+    body[data-context-layout="rows"] .list { grid-template-columns: auto minmax(0, 1fr) auto auto; column-gap: 8px; align-items: center; }
+    body[data-context-layout="rows"] .item-row,
+    body[data-turn-layout="rows"] .turn-bar-item { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
+    body[data-context-layout="rows"] .item-body { grid-column: 2 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
+    body[data-context-layout="rows"] .item-label { grid-column: 1; grid-row: 1; }
+    body[data-context-layout="rows"] .item-pct { grid-column: 2; grid-row: 1; justify-self: end; }
+    body[data-context-layout="rows"] .item-k { grid-column: 3; grid-row: 1; justify-self: end; }
+    body[data-turn-layout="rows"] .turn-bar-list { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; row-gap: var(--agy-row-gap); align-items: center; }
+    body[data-turn-layout="rows"] .turn-bar-label { grid-column: 2; grid-row: 1; display: block; }
+    body[data-turn-layout="rows"] .turn-bar-short { display: none; }
+    body[data-turn-layout="rows"] .turn-bar-item[data-turn-row="requests"] { container-type: normal; }
+    body[data-context-layout="rows"] .item-pct { margin-right: 4px; }
+    body[data-turn-layout="rows"] .turn-bar-val { grid-column: 3; grid-row: 1; justify-self: end; }
+    body[data-context-layout="rows"] .item-row > .dot,
+    body[data-turn-layout="rows"] .turn-bar-line { grid-column: 1; grid-row: 1; align-self: center; width: 10px; height: 10px; margin: 0; border-radius: 3px; }
+    body[data-context-marker="dot"][data-context-layout="rows"] .item-row > .dot,
+    body[data-turn-marker="dot"][data-turn-layout="rows"] .turn-bar-line { border-radius: 50%; }
+    body[data-show-context-breakdown="false"] .panel .list { display: none; }
+    .item-label { order: var(--agy-order-label, 0); }
+    .item-k { order: var(--agy-order-value, 1); }
+    .item-pct { order: var(--agy-order-percent, 2); }
     body[data-label-case="lowercase"] .panel .cache-left,
     body[data-label-case="lowercase"] .panel .used-pct,
-    body[data-label-case="lowercase"] .panel .item-left > span:last-child,
+    body[data-label-case="lowercase"] .panel .item-label,
     body[data-label-case="lowercase"] .panel .turn-bar-label,
     body[data-label-case="lowercase"] .panel .turn-bar-short,
     body[data-label-case="lowercase"] .panel .quota-label { text-transform: lowercase; }
@@ -989,23 +1079,23 @@ const UI_HTML = `<!DOCTYPE html>
 
         <div class="list">
           <div class="item-row" id="row-turn0" data-context-tip="turn0">
-            <div class="item-left"><span class="dot" style="background:#d4940a"></span><span data-i18n="turn0">Turn0</span></div>
-            <div class="item-k" id="val-turn0-k">0</div>
+            <span class="dot" style="background:#d4940a"></span>
+            <div class="item-body"><span class="item-label" data-i18n="turn0">Turn0</span><span class="item-k" id="val-turn0-k">0</span><span class="item-pct" id="val-turn0-pct">0%</span></div>
           </div>
 
           <div class="item-row" id="row-read" data-context-tip="read">
-            <div class="item-left"><span class="dot" style="background:#388bfd"></span><span data-i18n="read">Read</span></div>
-            <div class="item-k" id="val-read-k">0</div>
+            <span class="dot" style="background:#388bfd"></span>
+            <div class="item-body"><span class="item-label" data-i18n="read">Read</span><span class="item-k" id="val-read-k">0</span><span class="item-pct" id="val-read-pct">0%</span></div>
           </div>
 
           <div class="item-row" id="row-think" data-context-tip="think">
-            <div class="item-left"><span class="dot" style="background:#00b386"></span><span data-i18n="think">Think</span></div>
-            <div class="item-k" id="val-think-k">0</div>
+            <span class="dot" style="background:#00b386"></span>
+            <div class="item-body"><span class="item-label" data-i18n="think">Think</span><span class="item-k" id="val-think-k">0</span><span class="item-pct" id="val-think-pct">0%</span></div>
           </div>
 
           <div class="item-row" id="row-out" data-context-tip="write">
-            <div class="item-left"><span class="dot" style="background:#e86a24"></span><span data-i18n="write">Write</span></div>
-            <div class="item-k" id="val-out-k">0</div>
+            <span class="dot" style="background:#e86a24"></span>
+            <div class="item-body"><span class="item-label" data-i18n="write">Write</span><span class="item-k" id="val-out-k">0</span><span class="item-pct" id="val-out-pct">0%</span></div>
           </div>
         </div>
 
@@ -1041,13 +1131,13 @@ const UI_HTML = `<!DOCTYPE html>
       ['standard', 'standard', '<span class="pv-ico-density pv-id-standard"><i></i><i></i><i></i></span>'],
       ['spacious', 'spacious', '<span class="pv-ico-density pv-id-spacious"><i></i><i></i><i></i></span>'],
     ], true)}
-    ${renderPickCard('quotaIndicator', '', 2, [
-      ['ring', 'ring', PV_SVG.ring],
-      ['bar', 'bar', '<span class="pv-ico-bar"><i></i></span>'],
-    ], true)}
     ${renderPickCard('labelCase', '', 2, [
       ['lowercase', 'lowercase', 'aa'],
       ['titlecase', 'titlecase', 'Aa'],
+    ], true)}
+    ${renderPickCard('quotaIndicator', '', 2, [
+      ['ring', 'ring', PV_SVG.ring],
+      ['bar', 'bar', '<span class="pv-ico-bar"><i></i></span>'],
     ], true)}
     ${renderPickCard('resetFormat', '', 2, [
       ['compact', 'compactTime', '4h 55m'],
@@ -1083,17 +1173,31 @@ const UI_HTML = `<!DOCTYPE html>
       </div>
       <div class="metric-help" id="help-speed-pair" role="tooltip" data-i18n="speedPairTip"></div>
     </div>
-    ${renderCheckCard({ id: 'setting-show-request-metrics', helpId: 'request-metrics', key: 'showRequestMetrics', tip: 'requestSectionTip', checked: true })}
-    ${renderCheckCard({ id: 'setting-show-turn-metrics', helpId: 'turn-metrics', key: 'showTurnMetrics', tip: 'turnSectionTip', checked: true })}
-    <div class="pv-detail-pop" data-preview-group="turn" data-open="true" aria-hidden="true">
-      <div class="pv-detail-card">
-        <div class="pv-detail-bars">
-          <div class="pv-tb-item"><span class="pv-tb-line"></span><span class="pv-tb-lbl" data-i18n="turnLabel"></span><span class="pv-tb-val">42s</span></div>
-          <div class="pv-tb-item"><span class="pv-tb-line"></span><span class="pv-tb-lbl" data-i18n="turnReqsLabel"></span><span class="pv-tb-val">2</span></div>
-          <div class="pv-tb-item"><span class="pv-tb-line"></span><span class="pv-tb-lbl" data-i18n="turnThinking"></span><span class="pv-tb-val">640</span></div>
-          <div class="pv-tb-item"><span class="pv-tb-line"></span><span class="pv-tb-lbl" data-i18n="turnWrite"></span><span class="pv-tb-val">1.4K</span></div>
-        </div>
+    <div class="setting-card setting-option-card" data-setting-card="showContextBreakdown" data-layout-key="contextLayout" data-checked="true" data-layout="columns">
+      <div class="setting-head setting-pair-head">
+        <div class="setting-pair-item"><label class="setting-check"><input id="setting-show-context-breakdown" name="showContextBreakdown" type="checkbox" checked /><span data-i18n="showContextBreakdown"></span></label></div>
+        <div class="setting-opts">${renderSeg('contextLayout', LAYOUT_OPTIONS)}<span class="setting-opts-extra" data-for-layout="rows">${renderSeg('contextMarker', MARKER_OPTIONS)}</span></div>
       </div>
+    </div>
+    <div class="pv-detail-pop" data-preview-group="context" data-open="true" data-layout="columns">
+      <div class="pv-detail-card pv-fields" data-for-layout="columns" data-field-editor data-order-setting="columnOrder">${renderFieldEditor(DEFAULT_SETTINGS, presentation.dictionaries.en)}</div>
+      <div class="pv-detail-card pv-live" data-for-layout="rows" aria-hidden="true"><div class="list">
+        ${PV_CONTEXT_ITEMS.map(([key, color, value, pct]) => `<div class="item-row"><span class="dot" style="background:${color}"></span><div class="item-body"><span class="item-label" data-i18n="${key}"></span><span class="item-k">${value}</span><span class="item-pct">${pct}</span></div></div>`).join('')}
+      </div></div>
+    </div>
+    ${renderCheckCard({ id: 'setting-show-request-metrics', helpId: 'request-metrics', key: 'showRequestMetrics', tip: 'requestSectionTip', checked: true })}
+    <div class="setting-card setting-option-card metric-setting" data-setting-card="showTurnMetrics" data-layout-key="turnLayout" data-checked="true" data-layout="columns">
+      <div class="setting-head setting-pair-head">
+        <div class="setting-pair-item"><label class="setting-check"><input id="setting-show-turn-metrics" name="showTurnMetrics" type="checkbox" checked aria-describedby="help-turn-metrics" /><span data-i18n="showTurnMetrics"></span></label></div>
+        <div class="setting-opts">${renderSeg('turnLayout', LAYOUT_OPTIONS)}<span class="setting-opts-extra" data-for-layout="rows">${renderSeg('turnMarker', MARKER_OPTIONS)}</span></div>
+        <span class="setting-help-dot" aria-hidden="true">?</span>
+      </div>
+      <div class="metric-help" id="help-turn-metrics" role="tooltip" data-i18n="turnSectionTip"></div>
+    </div>
+    <div class="pv-detail-pop" data-preview-group="turn" data-open="true" aria-hidden="true">
+      <div class="pv-detail-card pv-live"><div class="turn-bar-list">
+        ${PV_TURN_ITEMS.map(([labelKey, value]) => `<div class="turn-bar-item"><span class="turn-bar-line"></span><span class="turn-bar-label" data-i18n="${labelKey}"></span><span class="turn-bar-val">${value}</span></div>`).join('')}
+      </div></div>
     </div>
   </section>
 
@@ -1101,6 +1205,7 @@ const UI_HTML = `<!DOCTYPE html>
   <script>
     ${getPresentationScript()}
     const presentation = globalThis.__agyCapsulePresentation;
+    ${renderFieldEditor.toString()}
     let prefs = ${JSON.stringify(DEFAULT_SETTINGS)};
     let labels = presentation.apply(document.body, prefs);
     let settingsLabels = presentation.dictionaries[prefs.settingsLanguage];
@@ -1177,6 +1282,13 @@ const UI_HTML = `<!DOCTYPE html>
       if (speedCard) speedCard.dataset.speedFx = String(prefs.showSpeed !== false && prefs.speedAnimation === true);
       const speedAnimCard = document.querySelector('[data-setting-card="speedAnimation"]');
       if (speedAnimCard) speedAnimCard.dataset.parentOff = String(prefs.showSpeed === false);
+      for (const card of document.querySelectorAll('.setting-option-card')) card.dataset.layout = prefs[card.dataset.layoutKey] === 'rows' ? 'rows' : 'columns';
+      const contextPreview = document.querySelector('[data-preview-group="context"]');
+      if (contextPreview) {
+        contextPreview.dataset.open = String(prefs.showContextBreakdown !== false);
+        contextPreview.dataset.layout = prefs.contextLayout === 'rows' ? 'rows' : 'columns';
+      }
+      renderFields();
       const turnPreview = document.querySelector('[data-preview-group="turn"]');
       if (turnPreview) turnPreview.dataset.open = String(prefs.showTurnMetrics !== false);
       updateControlState();
@@ -1227,6 +1339,76 @@ const UI_HTML = `<!DOCTYPE html>
         const patch = { [select.name]: value };
         if (select.name === 'showSpeed' && !value) patch.speedAnimation = false;
         void saveSettings(patch);
+      });
+    }
+    const fieldEditor = document.querySelector('[data-field-editor]');
+    const FIELD_KEYS = { label: 'columnLabel', value: 'columnValue', percent: 'columnPercent' };
+    var fieldHtml = '';
+    let draggedField = '';
+    function renderFields() {
+      const fieldEditor = document.querySelector('[data-field-editor]');
+      if (!fieldEditor) return;
+      const html = renderFieldEditor(prefs, settingsLabels);
+      if (html === fieldHtml) return;
+      // FLIP: animate rows from their old position so a moved row stays traceable.
+      const before = new Map([...fieldEditor.children].map(row => [row.dataset.field, row.getBoundingClientRect().top]));
+      fieldHtml = html;
+      fieldEditor.innerHTML = html;
+      for (const row of fieldEditor.children) {
+        const delta = (before.get(row.dataset.field) ?? row.getBoundingClientRect().top) - row.getBoundingClientRect().top;
+        if (!delta) continue;
+        row.animate([{ transform: 'translateY(' + delta + 'px)' }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.22,1,.36,1)' });
+      }
+    }
+    function fieldOrder() {
+      return String(prefs.columnOrder || 'label,value,percent').split(',');
+    }
+    function visibleOrder(order) {
+      return order.filter(field => prefs[FIELD_KEYS[field]] === true);
+    }
+    if (fieldEditor) {
+      fieldEditor.addEventListener('click', event => {
+        const toggle = event.target.closest('.pv-field-toggle');
+        if (!toggle) return;
+        const field = toggle.closest('.pv-field-row').dataset.field;
+        const turnOn = prefs[FIELD_KEYS[field]] !== true;
+        const order = fieldOrder().filter(f => f !== field);
+        // Hidden lines drop to the end; a re-enabled line joins the end of the visible ones.
+        order.splice(turnOn ? visibleOrder(order).length : order.length, 0, field);
+        void saveSettings({ [FIELD_KEYS[field]]: turnOn, columnOrder: order.join(',') });
+      });
+      fieldEditor.addEventListener('dragstart', event => {
+        const row = event.target.closest('.pv-field-row[draggable="true"]');
+        if (!row) return;
+        draggedField = row.dataset.field;
+        row.dataset.dragging = 'true';
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', draggedField);
+      });
+      const clearDrop = () => { for (const row of fieldEditor.children) { delete row.dataset.drop; delete row.dataset.dragging; } };
+      const dropTarget = event => {
+        const row = event.target.closest('.pv-field-row[data-on="true"]');
+        if (!row || !draggedField || row.dataset.field === draggedField) return null;
+        const rect = row.getBoundingClientRect();
+        return { row, place: event.clientY < rect.top + rect.height / 2 ? 'before' : 'after' };
+      };
+      fieldEditor.addEventListener('dragover', event => {
+        const target = dropTarget(event);
+        for (const row of fieldEditor.children) if (row !== target?.row) delete row.dataset.drop;
+        if (!target) return;
+        event.preventDefault();
+        target.row.dataset.drop = target.place;
+      });
+      fieldEditor.addEventListener('dragend', () => { clearDrop(); draggedField = ''; });
+      fieldEditor.addEventListener('drop', event => {
+        const target = dropTarget(event);
+        clearDrop();
+        if (!target) return;
+        event.preventDefault();
+        const order = fieldOrder().filter(f => f !== draggedField);
+        order.splice(order.indexOf(target.row.dataset.field) + (target.place === 'after' ? 1 : 0), 0, draggedField);
+        draggedField = '';
+        void saveSettings({ columnOrder: order.join(',') });
       });
     }
     for (const swatch of document.querySelectorAll('[data-pick-setting]')) {
@@ -1322,7 +1504,7 @@ const UI_HTML = `<!DOCTYPE html>
         const res = await fetch('/api/context' + qStr, { method: 'GET', headers });
         const d = await res.json();
         if (d.error) return;
-        if (d.uiVersion && d.uiVersion !== 94) {
+        if (d.uiVersion && d.uiVersion !== 96) {
           window.location.reload();
           return;
         }
@@ -1388,6 +1570,10 @@ const UI_HTML = `<!DOCTYPE html>
         document.getElementById('val-read-k').textContent = fmtColK(read);
         document.getElementById('val-think-k').textContent = fmtColK(think);
         document.getElementById('val-out-k').textContent = fmtColK(out);
+        document.getElementById('val-turn0-pct').textContent = turn0Pct;
+        document.getElementById('val-read-pct').textContent = readPct;
+        document.getElementById('val-think-pct').textContent = thinkPct;
+        document.getElementById('val-out-pct').textContent = outPct;
 
         if (d.quotaGroups) {
           renderQuota(d.quotaGroups);

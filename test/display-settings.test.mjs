@@ -203,7 +203,7 @@ test('sidebar settings use flat dividers, same-row appearance blocks, refined ca
   assert.ok(!UI_HTML.includes('data-i18n="previewKeepZero"'));
   assert.ok(!UI_HTML.includes('pv-err-pop'));
   for (const key of Object.keys(DEFAULT_SETTINGS)) {
-    assert.ok(UI_HTML.includes(`data-setting-card="${key}"`), `missing setting item for ${key}`);
+    assert.ok(['data-setting-card', 'data-pick-setting', 'data-toggle-setting', 'data-order-setting'].some(attr => UI_HTML.includes(`${attr}="${key}"`)), `missing setting item for ${key}`);
   }
   const settingsHtml = UI_HTML.slice(UI_HTML.indexOf('<section class="settings'));
   assert.ok(
@@ -317,4 +317,94 @@ test('footer quota popover shares one column grid across groups so percentages a
   assert.match(source, /\.dk-q-row \{\s*grid-column: 1 \/ -1;\s*display: grid;\s*grid-template-columns: subgrid;/);
   assert.match(source, /\.dk-q-right \{\s*grid-column: 2 \/ 4;\s*display: grid;\s*grid-template-columns: subgrid;/);
   assert.doesNotMatch(source, /\.dk-q-row \{[^}]*grid-template-columns: minmax/);
+});
+
+test('context breakdown and turn metrics each switch between columns and rows, with column field toggles', () => {
+  assert.equal(DEFAULT_SETTINGS.contextLayout, 'columns');
+  assert.equal(DEFAULT_SETTINGS.turnLayout, 'columns');
+  assert.equal(DEFAULT_SETTINGS.contextMarker, 'square');
+  assert.equal(DEFAULT_SETTINGS.turnMarker, 'square');
+  assert.equal(DEFAULT_SETTINGS.showContextBreakdown, true);
+  assert.equal(DEFAULT_SETTINGS.columnLabel, true);
+  assert.equal(DEFAULT_SETTINGS.columnValue, true);
+  assert.equal(DEFAULT_SETTINGS.columnPercent, false);
+
+  const dir = mkdtempSync(join(tmpdir(), 'agy-layout-'));
+  try {
+    const store = createSettingsStore(join(dir, 'settings.json'));
+    store.update({ contextLayout: 'rows', turnLayout: 'sideways', contextMarker: 'dot', columnPercent: true, showContextBreakdown: false });
+    const saved = store.read();
+    assert.equal(saved.contextLayout, 'rows');
+    assert.equal(saved.turnLayout, 'columns');
+    assert.equal(saved.contextMarker, 'dot');
+    assert.equal(saved.turnMarker, 'square');
+    assert.equal(saved.showContextBreakdown, false);
+    assert.equal(saved.columnPercent, true);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+
+  const ui = createPresentation();
+  assert.deepEqual(
+    ['contextLayout', 'turnLayout', 'contextMarker', 'turnMarker', 'showContextBreakdown', 'columnLabel', 'columnValue', 'columnPercent'].map(k => ui.appearance({ contextLayout: 'rows', turnMarker: 'dot', columnLabel: false })[k]),
+    ['rows', 'columns', 'square', 'dot', 'true', 'false', 'true', 'false']
+  );
+
+  const view = toView({ contextTokens: 100000, maxContextTokens: 400000, totalOutputTokens: 40000 });
+  assert.equal(view.valOutPct, '10%');
+  const deck = readFileSync(new URL('../agy-capsule/sidecars/agy_capsule/deck_injector.mjs', import.meta.url), 'utf8');
+  for (const k of ['Turn0', 'Read', 'Think', 'Out']) {
+    assert.match(deck, new RegExp(`class="dk-item-pct" data-k="val${k}Pct"`));
+    assert.ok(deck.includes(`setK('val${k}Pct', d.val${k}Pct)`), k);
+  }
+  assert.match(deck, /\[data-context-layout="rows"\] \.dk-item-row,\s*#deck-metrics-strip\[data-turn-layout="rows"\] \.turn-bar-item \{ grid-column: 1 \/ -1; display: grid; grid-template-columns: subgrid;/);
+  assert.match(deck, /\[data-turn-layout="rows"\] \.turn-bar-item\[data-turn-row="requests"\] \{ container-type: normal; \}/);
+  for (const id of ['turn0', 'read', 'think', 'out']) assert.match(UI_HTML, new RegExp(`class="item-pct" id="val-${id}-pct"`));
+  // Layout choices live inside their feature cards; the feature card comes first, then its live preview.
+  const contextCard = UI_HTML.indexOf('id="setting-show-context-breakdown"');
+  assert.ok(contextCard > 0 && contextCard < UI_HTML.indexOf('id="setting-show-request-metrics"'), 'context breakdown sits above recent requests');
+  assert.ok(UI_HTML.indexOf('data-preview-group="context"') > contextCard);
+  for (const [card, keys] of [['showContextBreakdown', ['contextLayout', 'contextMarker', 'columnLabel', 'columnValue', 'columnPercent']], ['showTurnMetrics', ['turnLayout', 'turnMarker']]]) {
+    const start = UI_HTML.indexOf(`data-setting-card="${card}" data-layout-key=`);
+    const end = card === 'showContextBreakdown' ? UI_HTML.indexOf('id="setting-show-request-metrics"') : UI_HTML.indexOf('class="pv-detail-pop"', start);
+    const block = UI_HTML.slice(start, end > 0 ? end : undefined);
+    for (const key of keys) assert.ok(block.includes(`data-pick-setting="${key}"`) || block.includes(`data-toggle-setting="${key}"`), `${key} inside ${card}`);
+  }
+  assert.match(UI_HTML, /class="setting-seg-opt" data-pick-setting="contextLayout"/);
+  assert.match(UI_HTML, /\.setting-option-card:not\(\[data-layout="columns"\]\) \[data-for-layout="columns"\]/);
+  assert.match(UI_HTML, /body\[data-show-context-breakdown="false"\] \.panel \.list \{ display: none; \}/);
+  assert.match(deck, /\[data-context-marker="dot"\]\[data-context-layout="rows"\]/);
+  assert.match(deck, /\[data-turn-marker="dot"\]\[data-turn-layout="rows"\]/);
+  assert.doesNotMatch(UI_HTML + deck, /rowMarker|row-marker/);
+  assert.match(UI_HTML, /data-pick-value="columns" data-pick-label="layoutColumns"><span class="seg-ico seg-ico-cols"/);
+  assert.match(UI_HTML, /\.setting-seg \{[^}]*border-radius: 6px;/);
+  assert.match(UI_HTML, /\.setting-seg-opt\[data-active="true"\] \{[^}]*color: #4ea84e; \}/);
+  assert.doesNotMatch(UI_HTML, /setting-chip|setting-opts-sub/);
+});
+
+test('column field order is adjustable, applied via CSS order, and edited inside the context preview', async () => {
+  assert.equal(DEFAULT_SETTINGS.columnOrder, 'label,value,percent');
+  const dir = mkdtempSync(join(tmpdir(), 'agy-order-'));
+  try {
+    const store = createSettingsStore(join(dir, 'settings.json'));
+    store.update({ columnOrder: 'value,percent,label' });
+    assert.equal(store.read().columnOrder, 'value,percent,label');
+    store.update({ columnOrder: 'value,value,label' });
+    assert.equal(store.read().columnOrder, 'value,percent,label');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+
+  const ui = createPresentation();
+  const props = {};
+  const root = { dataset: {}, style: { setProperty: (k, v) => { props[k] = v; }, getPropertyValue: () => '', removeProperty() {} }, querySelector: () => null, querySelectorAll: () => [] };
+  ui.apply(root, { language: 'en', columnOrder: 'percent,label,value' });
+  assert.deepEqual([props['--agy-order-label'], props['--agy-order-value'], props['--agy-order-percent']], ['1', '2', '0']);
+
+  const deck = readFileSync(new URL('../agy-capsule/sidecars/agy_capsule/deck_injector.mjs', import.meta.url), 'utf8');
+  assert.match(deck, /\.dk-item-pct \{ order: var\(--agy-order-percent, 2\); \}/);
+  assert.match(UI_HTML, /\.item-label \{ order: var\(--agy-order-label, 0\); \}/);
+
+  // Editor: visible lines first in saved order, hidden lines struck at the bottom without the colour line.
+  const editor = UI_HTML.slice(UI_HTML.indexOf('data-field-editor'), UI_HTML.indexOf('data-for-layout="rows" aria-hidden="true"'));
+  assert.deepEqual([...editor.matchAll(/data-field="(\w+)" data-on="(\w+)"/g)].map(m => m[1] + ':' + m[2]), ['label:true', 'value:true', 'percent:false']);
+  assert.match(UI_HTML, /\.pv-field-row\[data-on="false"\] \.pv-field-cell \{ border-left-color: transparent; text-decoration: line-through;/);
+  assert.match(UI_HTML, /function renderFieldEditor\(prefs, labels\)/);
+  assert.match(UI_HTML, /addEventListener\('drop'/);
 });

@@ -66,11 +66,11 @@ function pageMount(d) {
   }
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '95') {
+  if (root.getAttribute('data-deck-ver') !== '100') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '95');
+    root.setAttribute('data-deck-ver', '100');
     root._speedActivity = null;
     root.style.cssText = [
       'display: inline-flex',
@@ -98,8 +98,10 @@ function pageMount(d) {
         #deck-metrics-strip .dk-grp {
           display: inline-flex;
           align-items: center;
-          /* Both popovers anchor to the shared metrics strip. */
-          position: static;
+          /* Popovers are placed by JS relative to their group: context and
+             quota start at the strip's left edge but always reach their own
+             capsule's right edge; the error panel right-aligns to its capsule. */
+          position: relative;
         }
         #deck-metrics-strip .dk-pill {
           font: inherit;
@@ -344,10 +346,13 @@ function pageMount(d) {
           row-gap: 2px;
           min-width: 0;
         }
-        #deck-metrics-strip .dk-item-left {
-          display: contents;
+        #deck-metrics-strip .dk-item-body {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
         }
-        #deck-metrics-strip .dk-item-left > [data-i18n],
+        #deck-metrics-strip .dk-item-label,
         #deck-metrics-strip .turn-bar-label,
         #deck-metrics-strip .turn-bar-short {
           color: var(--muted-foreground, #8e8e93);
@@ -371,7 +376,7 @@ function pageMount(d) {
             display: block;
           }
         }
-        #deck-metrics-strip .dk-item-left > .dk-dot,
+        #deck-metrics-strip .dk-item-row > .dk-dot,
         #deck-metrics-strip .turn-bar-line {
           grid-row: 1 / span 2;
           align-self: stretch;
@@ -384,7 +389,9 @@ function pageMount(d) {
           background: rgba(142, 142, 147, 0.42);
           background: color-mix(in srgb, var(--muted-foreground, #8e8e93) 55%, transparent);
         }
+        #deck-metrics-strip .dk-item-row > .dk-dot { grid-row: 1; }
         #deck-metrics-strip .dk-item-k,
+        #deck-metrics-strip .dk-item-pct,
         #deck-metrics-strip .turn-bar-val {
           grid-column: 2;
           color: var(--muted-foreground, #8e8e93);
@@ -479,10 +486,36 @@ function pageMount(d) {
         #deck-metrics-strip[data-panel-layout="matched"] .dk-quota-pop > .dk-panel-content { height: 100%; align-content: space-between; }
         #deck-metrics-strip[data-label-case="lowercase"] .dk-cache-left,
         #deck-metrics-strip[data-label-case="lowercase"] .dk-used-pct,
-        #deck-metrics-strip[data-label-case="lowercase"] .dk-item-left > [data-i18n],
+        #deck-metrics-strip[data-label-case="lowercase"] .dk-item-label,
         #deck-metrics-strip[data-label-case="lowercase"] .turn-bar-label,
         #deck-metrics-strip[data-label-case="lowercase"] .turn-bar-short,
         #deck-metrics-strip[data-label-case="lowercase"] .dk-q-label { text-transform: lowercase; }
+        /* Context breakdown / turn metrics: columns (vertical lines) or rows (marker + label + values). */
+        #deck-metrics-strip:not([data-context-layout="rows"]) .dk-item-pct { display: none; }
+        #deck-metrics-strip[data-column-percent="true"]:not([data-context-layout="rows"]) .dk-item-pct { display: block; }
+        #deck-metrics-strip[data-column-label="false"]:not([data-context-layout="rows"]) .dk-item-label,
+        #deck-metrics-strip[data-column-value="false"]:not([data-context-layout="rows"]) .dk-item-k { display: none; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-list { grid-template-columns: auto minmax(0, 1fr) auto auto; column-gap: 8px; align-items: center; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-item-row,
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-item { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-item-body { grid-column: 2 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-item-label { grid-column: 1; grid-row: 1; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-item-pct { grid-column: 2; grid-row: 1; justify-self: end; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-item-k { grid-column: 3; grid-row: 1; justify-self: end; }
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-list { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; row-gap: var(--agy-row-gap); align-items: center; }
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-label { grid-column: 2; grid-row: 1; display: block; }
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-short { display: none; }
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-item[data-turn-row="requests"] { container-type: normal; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-item-pct { margin-right: 4px; }
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-val { grid-column: 3; grid-row: 1; justify-self: end; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-item-row > .dk-dot,
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-line { grid-column: 1; grid-row: 1; align-self: center; width: 10px; height: 10px; margin: 0; border-radius: 3px; }
+        #deck-metrics-strip[data-context-marker="dot"][data-context-layout="rows"] .dk-item-row > .dk-dot,
+        #deck-metrics-strip[data-turn-marker="dot"][data-turn-layout="rows"] .turn-bar-line { border-radius: 50%; }
+        #deck-metrics-strip[data-show-context-breakdown="false"] .dk-list { display: none; }
+        #deck-metrics-strip .dk-item-label { order: var(--agy-order-label, 0); }
+        #deck-metrics-strip .dk-item-k { order: var(--agy-order-value, 1); }
+        #deck-metrics-strip .dk-item-pct { order: var(--agy-order-percent, 2); }
       </style>
 
       <!-- Context Capsule + Popover -->
@@ -510,20 +543,20 @@ function pageMount(d) {
           </div>
           <div class="dk-list">
             <div class="dk-item-row" data-context-tip="turn0">
-              <div class="dk-item-left"><span class="dk-dot" style="background:#d4940a"></span><span data-i18n="turn0">Turn0</span></div>
-              <div class="dk-item-k" data-k="valTurn0K">0</div>
+              <span class="dk-dot" style="background:#d4940a"></span>
+              <div class="dk-item-body"><span class="dk-item-label" data-i18n="turn0">Turn0</span><span class="dk-item-k" data-k="valTurn0K">0</span><span class="dk-item-pct" data-k="valTurn0Pct">0%</span></div>
             </div>
             <div class="dk-item-row" data-context-tip="read">
-              <div class="dk-item-left"><span class="dk-dot" style="background:#388bfd"></span><span data-i18n="read">Read</span></div>
-              <div class="dk-item-k" data-k="valReadK">0</div>
+              <span class="dk-dot" style="background:#388bfd"></span>
+              <div class="dk-item-body"><span class="dk-item-label" data-i18n="read">Read</span><span class="dk-item-k" data-k="valReadK">0</span><span class="dk-item-pct" data-k="valReadPct">0%</span></div>
             </div>
             <div class="dk-item-row" data-context-tip="think">
-              <div class="dk-item-left"><span class="dk-dot" style="background:#00b386"></span><span data-i18n="think">Think</span></div>
-              <div class="dk-item-k" data-k="valThinkK">0</div>
+              <span class="dk-dot" style="background:#00b386"></span>
+              <div class="dk-item-body"><span class="dk-item-label" data-i18n="think">Think</span><span class="dk-item-k" data-k="valThinkK">0</span><span class="dk-item-pct" data-k="valThinkPct">0%</span></div>
             </div>
             <div class="dk-item-row" data-context-tip="write">
-              <div class="dk-item-left"><span class="dk-dot" style="background:#e86a24"></span><span data-i18n="write">Write</span></div>
-              <div class="dk-item-k" data-k="valOutK">0</div>
+              <span class="dk-dot" style="background:#e86a24"></span>
+              <div class="dk-item-body"><span class="dk-item-label" data-i18n="write">Write</span><span class="dk-item-k" data-k="valOutK">0</span><span class="dk-item-pct" data-k="valOutPct">0%</span></div>
             </div>
           </div>
           <div class="dk-generation" data-generation-block>
@@ -625,12 +658,15 @@ function pageMount(d) {
         const pop = grp.querySelector('.dk-pop');
         if (!pop) return;
         pop.style.left = '';
-        const pr = pop.getBoundingClientRect();
-        if (pr.width <= 0) return;
-        const maxRight = window.innerWidth - 8;
-        if (pr.right > maxRight) {
-          pop.style.left = Math.max(-pr.left + 8, maxRight - pr.right) + 'px';
-        }
+        const width = pop.getBoundingClientRect().width;
+        if (width <= 0) return;
+        const pill = grp.querySelector('.dk-pill').getBoundingClientRect();
+        const stripLeft = root.getBoundingClientRect().left;
+        // Error panel hugs its capsule's right edge; the others sit as far
+        // left as the strip allows while still reaching their capsule's right edge.
+        let left = grp.dataset.el === 'grpError' ? pill.right - width : Math.max(stripLeft, pill.right - width);
+        left = Math.max(8, Math.min(left, window.innerWidth - 8 - width));
+        pop.style.left = (left - grp.getBoundingClientRect().left) + 'px';
       };
       grp.addEventListener('mouseenter', () => {
         root._refreshCacheTooltip?.();
@@ -747,6 +783,10 @@ function pageMount(d) {
   setK('valReadK', d.valReadK);
   setK('valThinkK', d.valThinkK);
   setK('valOutK', d.valOutK);
+  setK('valTurn0Pct', d.valTurn0Pct);
+  setK('valReadPct', d.valReadPct);
+  setK('valThinkPct', d.valThinkPct);
+  setK('valOutPct', d.valOutPct);
 
   // Match active model to quota pills
   root._deckQuotas = d;

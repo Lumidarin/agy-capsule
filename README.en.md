@@ -8,80 +8,53 @@ Context usage, multi-model quotas, cache status and generation speed in the Anti
   <img src="assets/readme/hero.gif" width="100%" alt="Hovering the context, quota and request-failure capsules in turn to open their panels" />
 </p>
 
-- [Features](#features)
-- [Appearance](#appearance)
+- [Capsule 1: context](#capsule-1-context)
+- [Panel 1: context details](#panel-1-context-details)
+- [Capsule and panel 2: quota](#capsule-and-panel-2-quota)
+- [Capsule and panel 3: request failures](#capsule-and-panel-3-request-failures)
+- [All capsules and panels](#all-capsules-and-panels)
 - [Settings](#settings)
 - [Installation](#installation)
 - [Metric definitions](#metric-definitions)
 - [Notices](#notices)
 
-## Features
+## Capsule 1: context
 
-### Context and generation metrics
+See at a glance how full the context is, whether the cache is still warm, and how fast the latest request generated.
 
-See at a glance how full the context is, what it is full of, and how fast the latest request generated.
+<img src="assets/readme/feature-cache.png" width="100%" alt="Context capsule and panel, with the 3-minute yellow countdown and 4-minute red expiry cache states on the right" />
+
+- **Cache alerts**: Turns yellow with a countdown before the cache expires and red after, so you can follow up while it is still warm.
+- **Usage warning**: The capsule number turns yellow, then red, as the context fills up.
+- **Generation speed**: The capsule shows the latest request's speed, with an optional breathing-dot effect while generating.
+
+<sub>Yellow with a countdown (~1m) three minutes after the last turn, red at four; a local time-based estimate, actual cache hits depend on the server. Usage turns yellow at 75% and red at 90%+. All three can be turned off in settings.</sub>
+
+## Panel 1: context details
+
+Hover or click the first capsule. Shows what fills the context and what the latest request and this turn cost.
 
 <img src="assets/readme/feature-context.png" width="100%" alt="Context panel: cache hit, usage, four-part breakdown, latest request and turn metrics" />
 
 <sub>The limit is read live for the current session and model (e.g. 256K / 512K); before the first turn it shows 0 / --. The breakdown is turn0 (first turn), read, think and write. Latest request shows effective speed, time to first token (TTFT) and request duration; turn metrics count from your latest message. See <a href="#metric-definitions">Metric definitions</a>.</sub>
 
-### Multi-model quotas
-
-Remaining 5-hour and weekly quota for every model group, and how long until each resets.
-
-<img src="assets/readme/feature-quota.png" width="100%" alt="Quota panel: 5-hour and weekly remaining quota with reset countdowns for Gemini, Claude and Argon" />
-
-<sub>The capsule follows the model selected in the footer. Hover a row for the exact reset date, time and timezone.</sub>
-
-### Cache expiry alerts
-
-Turns yellow with a countdown before the cache expires and red after, so you can follow up while it is still warm.
-
-<img src="assets/readme/feature-cache.png" width="100%" alt="Cache states: fresh, 3-minute yellow countdown, 4-minute red expiry" />
-
-<sub>Yellow with a countdown (~1m) three minutes after the last turn, red at four. A local time-based estimate; actual cache hits depend on the server.</sub>
-
-### Request failures
-
-Tells you why a request failed, without digging through logs.
-
-<img src="assets/readme/feature-error.png" width="100%" alt="Request-failure capsule: Rate limited, with the reason and server-reported wait in the panel" />
-
-<sub>Distinguishes quota exhaustion, 429 rate limits, network drops, authentication problems, busy services and unknown errors, with the raw error in the panel. Stopping generation yourself is not a failure and shows nothing.</sub>
-
-### Narrow-footer folding
-
-Stays tidy in narrow windows, keeping the most important information longest.
-
-<img src="assets/readme/feature-narrow.gif" width="100%" alt="The composer narrows and capsules fold step by step" />
-
-<sub>The Turbo selector folds to its icon first, then speed, failure text and quota numbers fold and the model name shortens, keeping the context and failure entry points visible. Widening restores everything.</sub>
-
-### Also
-
-- **Click to pin**: Click a capsule and its panel stays open.
-- **Warning colors**: The capsule number turns yellow, then red, as the context fills up.
-- **Light and dark themes**, **translation-safe**, **no client changes**.
-
-<sub>Click again, click outside or press Esc to close a pinned panel. Context warnings trigger at 75% (yellow) and 90% (red) and can be turned off. The context panel aligns to the footer's left edge; quota and failure panels sit as far left as possible while covering their own capsule; in narrow footers, panels stay inside the composer instead of being clipped. Colors come from Antigravity's own variables. Numbers and countdowns are marked do-not-translate so translation extensions cannot misalign them. The plugin mounts through a native Sidecar and CDP with styles isolated in Shadow DOM, so it keeps working after client updates.</sub>
-
-## Appearance
-
-Every option below is independent. Change them on the sidebar's Settings tab; changes apply immediately with a live preview.
-
-### Breakdown layout: columns or rows
+**Style: columns or rows.** The context breakdown and turn metrics each choose; in rows mode, markers can be squares or dots.
 
 <img src="assets/readme/appearance-layout.png" width="100%" alt="Context breakdown as columns, rows with squares, and rows with dots" />
 
-The context breakdown and turn metrics each choose columns (four side by side) or rows (one per line). In rows mode, each also picks its own marker (square or dot). The context breakdown can be turned off entirely.
-
-### Which fields columns show
+**Which fields columns show.** Name, value and percent can each be toggled and dragged into order (see [Settings](#settings)).
 
 <img src="assets/readme/appearance-fields.png" width="100%" alt="Column fields: default name and value, plus percent, and value and percent reordered" />
 
-In columns mode, name, value and percent can each be turned on or off and dragged into any order (see [Settings](#settings)).
+## Capsule and panel 2: quota
 
-### Quota panel: indicator, countdown and language
+The capsule shows the current model's remaining 5-hour and weekly quota; the panel lists every quota pool with reset countdowns.
+
+<img src="assets/readme/feature-quota.png" width="100%" alt="Quota panel: 5-hour and weekly remaining quota with reset countdowns for the Gemini, Claude and Argon pools" />
+
+<sub>The capsule follows the model selected in the footer. Hover a panel row for the exact reset date, time and timezone. Optionally mark the current model's pool in the panel, and hide the empty placeholder when only 5-hour or only weekly data exists.</sub>
+
+**Style: indicator, countdown and language.**
 
 <img src="assets/readme/appearance-quota.png" width="100%" alt="Quota panel with ring and compact time, bar and localized time, and Simplified Chinese with title case" />
 
@@ -90,17 +63,35 @@ In columns mode, name, value and percent can each be turned on or off and dragge
 - **Label casing**: Lowercase (`weekly`) or title case (`Weekly`).
 - **Display language**: English, Simplified Chinese or Traditional Chinese.
 
-### Panel height
+## Capsule and panel 3: request failures
+
+Appears only when a request fails, and tells you why without digging through logs.
+
+<img src="assets/readme/feature-error.png" width="100%" alt="Request-failure capsule: Rate limited, with the reason and server-reported wait in the panel" />
+
+<sub>Distinguishes quota exhaustion, 429 rate limits, network drops, authentication problems, busy services and unknown errors, with the raw error in the panel. Stopping generation yourself is not a failure and shows nothing. Can be turned off in settings.</sub>
+
+## All capsules and panels
+
+**Click to pin.** Click a capsule and its panel stays open.
+
+<sub>Click again, click outside or press Esc to close. The context panel aligns to the footer's left edge; quota and failure panels sit as far left as possible while covering their own capsule; in narrow footers, panels stay inside the composer instead of being clipped.</sub>
+
+**Panel height.** Natural fits each panel to its content; matched gives all three panels one height, so switching doesn't jump.
 
 <img src="assets/readme/appearance-height.png" width="100%" alt="Natural height compared with matched height" />
 
-Natural: each panel is as tall as its content. Matched: context, quota and failure panels share one height, so switching between them doesn't jump.
-
-### Panel spacing
+**Panel spacing.** Compact, standard or spacious.
 
 <img src="assets/readme/appearance-density.png" width="100%" alt="Compact, standard and spacious spacing" />
 
-Compact, standard or spacious.
+**Narrow-footer folding.** Stays tidy in narrow windows, keeping the most important information longest.
+
+<img src="assets/readme/feature-narrow.gif" width="100%" alt="The composer narrows and capsules fold step by step" />
+
+<sub>The Turbo selector folds to its icon first, then speed, failure text and quota numbers fold and the model name shortens, keeping the context and failure entry points visible. Widening restores everything.</sub>
+
+<sub>Also: follows Antigravity's light and dark themes; numbers and countdowns are marked do-not-translate, so page-translation extensions cannot misalign them; mounts through a native Sidecar and CDP with styles isolated in Shadow DOM, so the client is never modified and keeps working after updates.</sub>
 
 ## Settings
 

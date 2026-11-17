@@ -408,3 +408,12 @@ test('column field order is adjustable, applied via CSS order, and edited inside
   assert.match(UI_HTML, /function renderFieldEditor\(prefs, labels\)/);
   assert.match(UI_HTML, /addEventListener\('drop'/);
 });
+
+test('failure panel shares matched height and quota-style placement; countdown sample follows display language', () => {
+  const deck = readFileSync(new URL('../agy-capsule/sidecars/agy_capsule/deck_injector.mjs', import.meta.url), 'utf8');
+  assert.ok(deck.includes("if (errorPop && !errorPop.closest('.dk-grp').hidden) pops.push(errorPop);"));
+  assert.ok(deck.includes('let left = Math.max(stripLeft, pill.right - width);'));
+  assert.ok(!deck.includes("grp.dataset.el === 'grpError' ? pill.right - width"));
+  assert.ok(UI_HTML.includes('<span data-stats-i18n="localizedTimeSample"></span>'));
+  assert.ok(!UI_HTML.includes('<span data-i18n="localizedTimeSample"></span>'));
+});

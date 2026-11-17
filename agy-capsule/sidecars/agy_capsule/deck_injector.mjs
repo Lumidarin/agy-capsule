@@ -66,11 +66,11 @@ function pageMount(d) {
   }
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '101') {
+  if (root.getAttribute('data-deck-ver') !== '102') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '101');
+    root.setAttribute('data-deck-ver', '102');
     root._speedActivity = null;
     root.style.cssText = [
       'display: inline-flex',
@@ -664,7 +664,8 @@ function pageMount(d) {
         const stripLeft = root.getBoundingClientRect().left;
         // Error panel hugs its capsule's right edge; the others sit as far
         // left as the strip allows while still reaching their capsule's right edge.
-        let left = grp.dataset.el === 'grpError' ? pill.right - width : Math.max(stripLeft, pill.right - width);
+        // Quota and failure panels lean toward the strip's left edge but always cover their own capsule's right edge.
+        let left = Math.max(stripLeft, pill.right - width);
         // Stay inside every clipping ancestor (e.g. the chat input box), not just the window.
         let minLeft = 8;
         let maxRight = window.innerWidth - 8;
@@ -1111,7 +1112,11 @@ function pageMount(d) {
   applyModelQuota();
 
   root._fitPanelHeights = (force = false) => {
+    // The failure panel joins the matched height only while its capsule is shown.
+    const errorPop = root.querySelector('.dk-error-pop');
     const pops = [root.querySelector('.dk-ctx-pop'), root.querySelector('.dk-quota-pop')];
+    if (errorPop && !errorPop.closest('.dk-grp').hidden) pops.push(errorPop);
+    else if (errorPop) errorPop.style.height = '';
     if (root.dataset.panelLayout !== 'matched') {
       for (const pop of pops) pop.style.height = '';
       root._heightKey = '';

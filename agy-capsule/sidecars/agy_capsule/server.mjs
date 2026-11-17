@@ -248,7 +248,7 @@ function resolveLatestConvId(preferredId) {
 
 async function makeEmptyContextResult() {
   return {
-    uiVersion: 96,
+    uiVersion: 97,
     turnSpeed: null,
     turnMetrics: null,
     requestError: classifyRequestError(),
@@ -294,7 +294,7 @@ async function inspectConversation(convId, exact = false) {
   const snapshot = conversationCache.read(join(CONV_DIR, `${targetId}.db`));
   if (!snapshot) return await makeEmptyContextResult();
   return {
-    uiVersion: 96,
+    uiVersion: 97,
     ...snapshot,
     prefs: settingsStore.read(),
     quotaGroups: await fetchQuotaGroups(),
@@ -1141,7 +1141,7 @@ const UI_HTML = `<!DOCTYPE html>
     ], true)}
     ${renderPickCard('resetFormat', '', 2, [
       ['compact', 'compactTime', '4h 55m'],
-      ['localized', 'localizedTime', '<span data-i18n="localizedTimeSample"></span>'],
+      ['localized', 'localizedTime', '<span data-stats-i18n="localizedTimeSample"></span>'],
     ], true)}
 
     <div class="settings-scope" data-settings-scope="features" data-i18n="featuresSection"></div>
@@ -1504,7 +1504,7 @@ const UI_HTML = `<!DOCTYPE html>
         const res = await fetch('/api/context' + qStr, { method: 'GET', headers });
         const d = await res.json();
         if (d.error) return;
-        if (d.uiVersion && d.uiVersion !== 96) {
+        if (d.uiVersion && d.uiVersion !== 97) {
           window.location.reload();
           return;
         }

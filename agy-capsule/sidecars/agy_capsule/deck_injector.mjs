@@ -66,12 +66,13 @@ function pageMount(d) {
   }
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '102') {
+  if (root.getAttribute('data-deck-ver') !== '106') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '102');
+    root.setAttribute('data-deck-ver', '106');
     root._speedActivity = null;
+    root._motionPrev = null;
     root.style.cssText = [
       'display: inline-flex',
       'align-items: center',
@@ -158,10 +159,15 @@ function pageMount(d) {
         #deck-metrics-strip .dk-speed[data-motion="active"] .dk-speed-dot { animation: dk-speed-breathe 1.2s ease-in-out infinite; }
         #deck-metrics-strip .dk-speed[data-motion="recent"] .dk-speed-dot { opacity: .9; }
         #deck-metrics-strip .dk-speed[data-motion="idle"] .dk-speed-dot { opacity: .48; }
+        /* Same motion language as the settings previews: colors ease over .18s. */
+        #deck-metrics-strip [data-k="pillCtx"], #deck-metrics-strip [data-el="ctxIconSvg"],
+        #deck-metrics-strip .dk-cache-pct, #deck-metrics-strip .dk-cache-k { transition: color .18s ease, opacity .18s ease; }
         @keyframes dk-speed-breathe { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.78); } }
         @media (prefers-reduced-motion: reduce) {
           #deck-metrics-strip .dk-speed[data-motion="active"] .dk-speed-dot { animation: none; }
           #deck-metrics-strip .dk-speed[data-motion] { transition: none; }
+          #deck-metrics-strip [data-k="pillCtx"], #deck-metrics-strip [data-el="ctxIconSvg"],
+          #deck-metrics-strip .dk-cache-pct, #deck-metrics-strip .dk-cache-k, #deck-metrics-strip .dk-q-group, #deck-metrics-strip .dk-q-active { transition: none; }
         }
         #deck-metrics-strip .dk-speed[hidden],
         #deck-metrics-strip.dk-hide-speed .dk-speed { display: none; }
@@ -465,12 +471,13 @@ function pageMount(d) {
         }
         /* Optional presentation inspired by z21100644/agy-capsule PR #1.
            Both styles use the existing four-category telemetry, unchanged. */
+        #deck-metrics-strip .dk-q-group { transition: opacity .2s ease; }
         #deck-metrics-strip[data-highlight-active-model="true"] .dk-q-group[data-active="false"] { opacity: .7; }
         #deck-metrics-strip .dk-q-pct { justify-self: end; }
         #deck-metrics-strip .dk-q-meter { min-width: 24px; height: 4px; border-radius: 99px; overflow: hidden; background: rgba(142,142,147,.24); }
         #deck-metrics-strip .dk-q-meter > span { display: block; height: 100%; border-radius: inherit; }
-        #deck-metrics-strip .dk-q-active { display: none; width: 4px; height: 4px; flex-shrink: 0; border-radius: 50%; background: currentColor; margin-left: 4px; vertical-align: middle; align-self: center; }
-        #deck-metrics-strip[data-highlight-active-model="true"] .dk-q-group[data-active="true"] .dk-q-active { display: inline-block; }
+        #deck-metrics-strip .dk-q-active { display: inline-block; width: 0; height: 4px; flex-shrink: 0; border-radius: 50%; background: currentColor; margin-left: 0; vertical-align: middle; align-self: center; opacity: 0; transform: scale(.5); transition: opacity .2s ease, transform .2s ease, width .2s ease, margin-left .2s ease; }
+        #deck-metrics-strip[data-highlight-active-model="true"] .dk-q-group[data-active="true"] .dk-q-active { width: 4px; margin-left: 4px; opacity: 1; transform: scale(1); }
         /* Shared spacing rules; indicator and marker are independent. */
         #deck-metrics-strip .dk-list { row-gap: var(--agy-row-gap); }
         #deck-metrics-strip .dk-cache-bar { padding-bottom: var(--agy-section-gap); margin-bottom: var(--agy-section-gap); }
@@ -801,6 +808,42 @@ function pageMount(d) {
 
   // Match active model to quota pills
   root._deckQuotas = d;
+  // Reveals reserve their final width before fitting the footer. Animating layout
+  // width from zero lets the fit check pass too early and overlap native buttons.
+  // Leaving items may shrink; they never need more room than the fitted layout.
+  const motion = (key, el, restore) => {
+    const state = root._motionPrev || (root._motionPrev = {});
+    // Still collapsing: a later re-render hiding it again must not cut the animation short.
+    if (el._leaving) {
+      if (el.hidden) { el.hidden = false; return; }
+      el._leaving.cancel(); el._leaving = null;
+    }
+    const visible = !el.hidden;
+    const text = el.textContent;
+    const width = visible ? el.getBoundingClientRect().width : 0;
+    const p = state[key];
+    state[key] = { visible, text, width };
+    if (!p || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (visible === p.visible && (!visible || text === p.text)) return;
+    for (const a of el.getAnimations()) a.cancel();
+    const gap = parseFloat(getComputedStyle(el.parentElement).columnGap) || 0;
+    // Cancel the gap on the side that has a neighbour, so a leading item doesn't slide outside its capsule.
+    const prevSib = el.previousElementSibling;
+    const side = prevSib && !prevSib.hidden && getComputedStyle(prevSib).display !== 'none' ? 'marginLeft' : 'marginRight';
+    const box = (w, o, m) => ({ overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: w + 'px', minWidth: Math.min(w, width || w) + 'px', opacity: o, [side]: m + 'px' });
+    const timing = { duration: 220, easing: 'ease' };
+    if (visible && !p.visible) {
+      el.animate([{ opacity: 0, clipPath: 'inset(0 100% 0 0)' }, { opacity: 1, clipPath: 'inset(0)' }], timing);
+    } else if (!visible && p.visible) {
+      el.hidden = false;
+      restore?.(p.text); // collapse what was shown, not the cleared value
+      const out = el.animate([{ ...box(p.width, 1, 0), minWidth: '0px' }, { ...box(0, 0, -gap), minWidth: '0px' }], { ...timing, fill: 'forwards' });
+      el._leaving = out;
+      out.onfinish = () => { el._leaving = null; el.hidden = true; out.cancel(); root._scheduleLayout?.(); };
+    } else if (Math.abs(width - p.width) > 0.5) {
+      el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 180, easing: 'ease' });
+    }
+  };
   const applyModelQuota = () => {
     let mt = '';
     for (const child of footerLeft.children) {
@@ -854,8 +897,12 @@ function pageMount(d) {
     setK('pill5h', q5hVal);
     setK('pillWk', qWkVal);
     const hideAbsent = q.prefs?.hideUnavailableQuota === true;
-    root.querySelector('[data-el="pair5h"]').hidden = hideAbsent && q5hVal === '--%' && qWkVal !== '--%';
-    root.querySelector('[data-el="pairWk"]').hidden = hideAbsent && qWkVal === '--%' && q5hVal !== '--%';
+    const pair5h = root.querySelector('[data-el="pair5h"]');
+    const pairWk = root.querySelector('[data-el="pairWk"]');
+    pair5h.hidden = hideAbsent && q5hVal === '--%' && qWkVal !== '--%';
+    pairWk.hidden = hideAbsent && qWkVal === '--%' && q5hVal !== '--%';
+    motion('pair5h', pair5h);
+    motion('pairWk', pairWk);
     root.dataset.preferWkOnly = q5hVal === '--%' && qWkVal !== '--%' ? '1' : '0';
     return mt;
   };
@@ -1102,6 +1149,9 @@ function pageMount(d) {
   if (valCacheHitKEl) {
     valCacheHitKEl.style.color = d.cacheValColor;
   }
+
+  motion('speed', pillSpeed, text => { speedValue.textContent = text.trim(); });
+  motion('error', root.querySelector('[data-el="grpError"]'));
 
   // Update Quota Popover HTML
   const quotaPop = root.querySelector('[data-el="quotaPop"]');

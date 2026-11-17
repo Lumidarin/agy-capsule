@@ -248,7 +248,7 @@ function resolveLatestConvId(preferredId) {
 
 async function makeEmptyContextResult() {
   return {
-    uiVersion: 97,
+    uiVersion: 99,
     turnSpeed: null,
     turnMetrics: null,
     requestError: classifyRequestError(),
@@ -294,7 +294,7 @@ async function inspectConversation(convId, exact = false) {
   const snapshot = conversationCache.read(join(CONV_DIR, `${targetId}.db`));
   if (!snapshot) return await makeEmptyContextResult();
   return {
-    uiVersion: 97,
+    uiVersion: 99,
     ...snapshot,
     prefs: settingsStore.read(),
     quotaGroups: await fetchQuotaGroups(),
@@ -479,32 +479,25 @@ const PV_CARD_PREVIEW = {
   </div>`,
 };
 
-const renderCheckCard = ({ id, helpId = id, key, tip = '', checked = false, sub = false, inlineSample = '', preview = PV_CARD_PREVIEW[key] || '' }) => `
-  <div class="setting-card${sub ? ' setting-sub' : ''}${tip ? ' metric-setting' : ''}" data-setting-card="${key}" data-checked="${checked}">
+const renderCheckCard = ({ id, helpId = id, key, tip = '', checked = false, preview = PV_CARD_PREVIEW[key] || '' }) => `
+  <div class="setting-card${tip ? ' metric-setting' : ''}" data-setting-card="${key}" data-checked="${checked}">
     <div class="setting-head">
       <label class="setting-check">
         <input id="${id}" name="${key}" type="checkbox"${checked ? ' checked' : ''}${tip ? ` aria-describedby="help-${helpId}"` : ''} />
         <span data-i18n="${key}"></span>
-      </label>${inlineSample ? `<span class="setting-inline-sample" aria-hidden="true">${inlineSample}</span>` : ''}${tip ? `<span class="setting-help-dot" aria-hidden="true">?</span>` : ''}
+      </label>${tip ? `<span class="setting-help-dot" aria-hidden="true">?</span>` : ''}
     </div>
     ${preview ? `<div class="setting-preview" aria-hidden="true">${preview}</div>` : ''}
     ${tip ? `<div class="metric-help" id="help-${helpId}" role="tooltip" data-i18n="${tip}"></div>` : ''}
   </div>`;
 
-const renderPickCard = (key, tip, cols, items, inlineIconsOnly = false) => inlineIconsOnly ? `
+const renderPickCard = (key, items) => `
   <div class="setting-card" data-setting-card="${key}">
     <div class="setting-head"><span class="setting-label" data-i18n="${key}"></span>
       <div class="pv-pick-inline">
         ${items.map(([val, labelKey, iconHtml]) => `<button type="button" class="pv-swatch pv-swatch-icon" data-pick-setting="${key}" data-pick-value="${val}" data-pick-label="${labelKey}">${iconHtml}</button>`).join('')}
       </div>
     </div>
-  </div>` : `
-  <div class="setting-card${tip ? ' metric-setting' : ''}" data-setting-card="${key}">
-    <div class="setting-head"><span class="setting-label" data-i18n="${key}"></span>${tip ? '<span class="setting-help-dot" aria-hidden="true">?</span>' : ''}</div>
-    <div class="setting-preview"><div class="pv-pick-grid pv-cols-${cols}">
-      ${items.map(([val, labelKey, iconHtml]) => `<button type="button" class="pv-swatch" data-pick-setting="${key}" data-pick-value="${val}">${iconHtml}<span class="pv-swatch-label" data-i18n="${labelKey}"></span></button>`).join('')}
-    </div></div>
-    ${tip ? `<div class="metric-help" role="tooltip" data-i18n="${tip}"></div>` : ''}
   </div>`;
 
 // Segmented option control styled like the settings switches.
@@ -807,7 +800,6 @@ const UI_HTML = `<!DOCTYPE html>
     .settings-scope-title { font-size: 12px; font-weight: 600; color: var(--muted-foreground, #8e8e93); }
     .setting-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 7px 0; border-top: 1px solid color-mix(in srgb, var(--border, rgba(142,142,147,.24)) 55%, transparent); background: transparent; }
     .settings > .setting-card:first-child, .settings-scope + .setting-card { border-top: 0; }
-    .setting-card.setting-sub { padding-left: 18px; border-top-style: dashed; }
     .setting-card[data-parent-off="true"], [data-parent-off="true"] { opacity: .45; }
     [data-parent-off="true"] .setting-check,
     [data-parent-off="true"] input[type="checkbox"] { cursor: not-allowed; }
@@ -830,9 +822,6 @@ const UI_HTML = `<!DOCTYPE html>
     .setting-check input[type="checkbox"]:checked::after { transform: translateX(13px); background: #4ea84e; }
     .setting-check input[type="checkbox"]:focus-visible { outline: 2px solid #388bfd; outline-offset: 1px; }
     .setting-check > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .setting-inline-sample { flex-shrink: 0; font-size: 11.5px; color: var(--muted-foreground, #8e8e93); font-variant-numeric: tabular-nums; white-space: nowrap; transition: opacity .15s ease; }
-    .setting-inline-sample b { color: var(--foreground, #ebebeb); font-weight: 600; }
-    .setting-card[data-checked="false"]:not([data-setting-card="speedAnimation"]) .setting-inline-sample { opacity: .42; text-decoration: line-through; }
     .setting-help-dot { flex-shrink: 0; width: 15px; height: 15px; padding: 0; border-radius: 50%; border: 1px solid var(--border, rgba(142,142,147,.4)); background: transparent; color: var(--muted-foreground, #8e8e93); font: inherit; font-size: 10.5px; line-height: 13px; text-align: center; cursor: help; }
     .metric-help { position: absolute; bottom: calc(100% + 5px); left: 0; z-index: 10; box-sizing: border-box; width: 100%; max-width: 360px; padding: 10px 12px; border: 1px solid var(--border, #444); border-radius: 6px; background: var(--card, #222225); color: var(--foreground, #ebebeb); line-height: 1.5; overflow-wrap: anywhere; box-shadow: 0 3px 12px #0003; visibility: hidden; pointer-events: none; }
     .metric-setting:not([data-help-dismissed]) .setting-head:hover ~ .metric-help,
@@ -841,9 +830,6 @@ const UI_HTML = `<!DOCTYPE html>
     .pv-svg { width: 11px; height: 11px; flex-shrink: 0; }
     .pv-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 5px; background: var(--secondary, rgba(128,128,128,.16)); color: var(--muted-foreground, #8e8e93); white-space: nowrap; }
     /* Same-row clickable block pickers */
-    .pv-pick-grid { display: grid; gap: 5px; }
-    .pv-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .pv-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .setting-opts { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
     .setting-option-card:not([data-layout="columns"]) [data-for-layout="columns"],
     .setting-option-card:not([data-layout="rows"]) [data-for-layout="rows"] { display: none; }
@@ -886,7 +872,6 @@ const UI_HTML = `<!DOCTYPE html>
     .pv-swatch-icon { min-width: 38px; padding: 4px 10px; }
     .pv-swatch:hover { background: var(--secondary, #303034); color: var(--foreground, #ebebeb); }
     .pv-swatch[data-active="true"] { border-color: #2b7fff; color: var(--foreground, #ebebeb); background: color-mix(in srgb, #2b7fff 14%, var(--card, #222225)); font-weight: 500; }
-    .pv-swatch-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pv-ico-layout { display: inline-flex; align-items: flex-end; gap: 2.5px; height: 12px; flex-shrink: 0; }
     .pv-ico-layout i { display: block; width: 5px; border: 1.2px solid currentColor; border-radius: 1.5px; }
     .pv-il-tall { height: 12px; }
@@ -917,7 +902,7 @@ const UI_HTML = `<!DOCTYPE html>
     .pv-hq-miss { max-width: 56px; opacity: 1; margin-right: 6px; transition: max-width .22s ease, opacity .18s ease, margin-right .22s ease; }
     .pv-hq-zero { margin-right: 6px; color: #ef4444; font-weight: 600; }
     [data-setting-card="hideUnavailableQuota"][data-checked="true"] .pv-hq-miss { max-width: 0; opacity: 0; margin-right: 0; }
-    /* Cache expiry warning: unchecked all neutral, checked 3m+ yellow icon, 4m+ red icon */
+    /* Cache expiry alert: unchecked all neutral, checked 3m+ yellow icon, 4m+ red icon */
     .pv-cache-warn { display: flex; align-items: center; gap: 6px; }
     .pv-cache-warn .pv-pill { flex: 0 0 auto; }
     .pv-cache-warn .pv-svg { transition: color .18s ease; }
@@ -1110,39 +1095,39 @@ const UI_HTML = `<!DOCTYPE html>
   </div>
 
   <section class="settings sidebar-view" id="sidebar-settings" role="tabpanel" aria-labelledby="sidebar-tab-settings" tabindex="0" hidden>
-    ${renderPickCard('settingsLanguage', '', 3, [
+    ${renderPickCard('settingsLanguage', [
       ['en', '', 'EN'],
       ['zh-CN', '', '简'],
       ['zh-TW', '', '繁'],
-    ], true)}
-    ${renderPickCard('language', '', 3, [
+    ])}
+    ${renderPickCard('language', [
       ['en', '', 'EN'],
       ['zh-CN', '', '简'],
       ['zh-TW', '', '繁'],
-    ], true)}
+    ])}
 
     <div class="settings-scope" data-i18n="appearanceSection"></div>
-    ${renderPickCard('panelLayout', '', 2, [
+    ${renderPickCard('panelLayout', [
       ['natural', 'naturalLayout', '<span class="pv-ico-layout"><i class="pv-il-tall"></i><i class="pv-il-short"></i></span>'],
       ['matched', 'matchedLayout', '<span class="pv-ico-layout"><i class="pv-il-tall"></i><i class="pv-il-tall"></i></span>'],
-    ], true)}
-    ${renderPickCard('density', '', 3, [
+    ])}
+    ${renderPickCard('density', [
       ['compact', 'compact', '<span class="pv-ico-density pv-id-compact"><i></i><i></i><i></i></span>'],
       ['standard', 'standard', '<span class="pv-ico-density pv-id-standard"><i></i><i></i><i></i></span>'],
       ['spacious', 'spacious', '<span class="pv-ico-density pv-id-spacious"><i></i><i></i><i></i></span>'],
-    ], true)}
-    ${renderPickCard('labelCase', '', 2, [
+    ])}
+    ${renderPickCard('labelCase', [
       ['lowercase', 'lowercase', 'aa'],
       ['titlecase', 'titlecase', 'Aa'],
-    ], true)}
-    ${renderPickCard('quotaIndicator', '', 2, [
+    ])}
+    ${renderPickCard('quotaIndicator', [
       ['ring', 'ring', PV_SVG.ring],
       ['bar', 'bar', '<span class="pv-ico-bar"><i></i></span>'],
-    ], true)}
-    ${renderPickCard('resetFormat', '', 2, [
+    ])}
+    ${renderPickCard('resetFormat', [
       ['compact', 'compactTime', '4h 55m'],
       ['localized', 'localizedTime', '<span data-stats-i18n="localizedTimeSample"></span>'],
-    ], true)}
+    ])}
 
     <div class="settings-scope" data-settings-scope="features" data-i18n="featuresSection"></div>
     ${renderCheckCard({ id: 'setting-highlight-active-model', key: 'highlightActiveModel', checked: false })}
@@ -1451,7 +1436,10 @@ const UI_HTML = `<!DOCTYPE html>
 
     function renderQuota(groups) {
       const root = document.getElementById('quota-root');
-      if (!Array.isArray(groups) || groups.length === 0) return;
+      if (!Array.isArray(groups) || groups.length === 0) {
+        root.replaceChildren();
+        return;
+      }
       let html = '';
       const windowOrder = { '5h': 0, weekly: 1 };
       for (const g of groups) {
@@ -1504,7 +1492,7 @@ const UI_HTML = `<!DOCTYPE html>
         const res = await fetch('/api/context' + qStr, { method: 'GET', headers });
         const d = await res.json();
         if (d.error) return;
-        if (d.uiVersion && d.uiVersion !== 97) {
+        if (d.uiVersion && d.uiVersion !== 99) {
           window.location.reload();
           return;
         }
@@ -1575,9 +1563,7 @@ const UI_HTML = `<!DOCTYPE html>
         document.getElementById('val-think-pct').textContent = thinkPct;
         document.getElementById('val-out-pct').textContent = outPct;
 
-        if (d.quotaGroups) {
-          renderQuota(d.quotaGroups);
-        }
+        renderQuota(d.quotaGroups);
     }
 
     function updateControlState() {

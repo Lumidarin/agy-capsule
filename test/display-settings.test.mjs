@@ -223,7 +223,7 @@ test('sidebar settings use flat dividers, same-row appearance blocks, refined ca
   assert.ok(UI_HTML.includes('id="help-speed-pair"') && UI_HTML.includes('id="help-request-metrics"') && UI_HTML.includes('id="help-turn-metrics"'));
   assert.equal((settingsHtml.match(/class="setting-help-dot"/g) || []).length, 3, 'only 3 concise ? help dots should remain');
   assert.ok(UI_HTML.includes('data-preview-group="turn"') && !UI_HTML.includes('data-preview-group="request"'));
-  assert.equal(ui.dictionaries.en.requestTip, 'Last request');
+  assert.equal(ui.dictionaries.en.showRequestMetrics, 'Last request');
   assert.equal(ui.dictionaries.en.turnMetrics, 'Last turn');
   assert.equal(ui.dictionaries['zh-CN'].featuresSection, '功能');
   assert.equal(ui.dictionaries['zh-CN'].speedAnimation, '动效');

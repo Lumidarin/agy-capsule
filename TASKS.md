@@ -1,6 +1,16 @@
 # PR 选择性整合清单
 
-更新：2026-11-16。原 PR：<https://github.com/Lumidarin/agy-capsule/pull/1>，评估版本 `017a4bfb3566d5cb4b079ab0156a0ac2a98dd991`。
+更新：2026-11-17。原 PR：<https://github.com/Lumidarin/agy-capsule/pull/1>，评估版本 `017a4bfb3566d5cb4b079ab0156a0ac2a98dd991`。
+
+## 2026-11-17：提交前修复与清理（已同步，用户验收通过）
+
+- 修复底栏展开动画先按零宽度适配、随后挤入 Turbo／发送按钮的问题：展开前预留最终宽度；速度文字变长也按实际占位适配，保留显隐动效。
+- 修复 Sidebar 收到空配额数据仍保留旧额度的问题：空／缺失数据清空，后续新数据正常恢复。
+- 删除 15 个已无引用的图片／GIF，保留 README 使用的 `hero.gif`；`promo/` 未改动。
+- 删除三语字典中 17 个无调用的旧文案键及未使用的设置卡片分支／样式；保留动态错误说明、四类统计说明及现有 tooltip，不新增说明入口。
+- 验证：42 项 Node tests、2 项浏览器回归通过；浏览器覆盖空配额清空与恢复、260–580px 底栏展开及速度数字变长。
+- 已同步并实机确认 AGY：API 99／底栏 DOM 106／presentation 61，runtime hash 与源码一致，底栏仅一个 host；Sidebar 已加载修复，个人设置文件未变。
+- 用户测试通过，按要求做本地 commit，不 push。“最终审核 by Gemini / Claude”仍未完成。下方状态为此前记录。
 
 ## 约定
 

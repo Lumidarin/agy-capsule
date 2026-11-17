@@ -128,8 +128,10 @@ test('turn display keeps scopes separate, exposes missing usage and updates elap
   assert.equal(ui.turnMetricsText({ ...completed, duration: null, requestCount: null }).requests, '—');
   assert.equal(ui.dictionaries['zh-CN'].turnLabel, '本轮');
   assert.equal(ui.dictionaries['zh-CN'].turnReqsLabel, '请求');
+  assert.equal(ui.dictionaries['zh-CN'].turnReqsShort, '请');
   assert.equal(ui.dictionaries['zh-TW'].turnLabel, '本輪');
   assert.equal(ui.dictionaries['zh-TW'].turnReqsLabel, '請求');
+  assert.equal(ui.dictionaries['zh-TW'].turnReqsShort, '請');
   const midTurnGap = summarizeTurnMetrics([], [{ ...user, idx: 10, createdAtMs: 1000 }, { idx: 11, step_type: 132, status: 3 }], 10);
   assert.equal(midTurnGap.state, 'unknown');
   assert.equal(ui.turnMetricsText(midTurnGap, ui.dictionaries.en, 16000).elapsed, '15s');
@@ -164,7 +166,7 @@ test('context and turn four-column strips share equal CSS grid tracks so vertica
   assert.match(UI_HTML, /\.list,\s*\.turn-bar-list\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/s);
   assert.match(UI_HTML, /\.turn-bar-list\s*\{[^}]*grid-template-columns:\s*minmax\(calc\(\(100% - 18px\) \/ 4\),\s*max-content\)\s*minmax\(0,\s*1fr\)\s*calc\(\(100% - 18px\) \/ 4\)\s*calc\(\(100% - 18px\) \/ 4\);/s);
   assert.match(UI_HTML, /\.pv-detail-bars\s*\{[^}]*display:\s*grid;\s*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/s);
-  assert.match(ui.turnMetricsMarkup(), /class="turn-bar-short"[^>]*>R</);
+  assert.match(ui.turnMetricsMarkup(), /class="turn-bar-short"[^>]*data-i18n="turnReqsShort"[^>]*>Re</);
   assert.match(deckCode, /@container\s*\(max-width:\s*39px\)/);
   assert.match(UI_HTML, /@container\s*\(max-width:\s*39px\)/);
 });

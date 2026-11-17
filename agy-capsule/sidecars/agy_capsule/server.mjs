@@ -248,7 +248,7 @@ function resolveLatestConvId(preferredId) {
 
 async function makeEmptyContextResult() {
   return {
-    uiVersion: 88,
+    uiVersion: 91,
     turnSpeed: null,
     turnMetrics: null,
     requestError: classifyRequestError(),
@@ -294,7 +294,7 @@ async function inspectConversation(convId, exact = false) {
   const snapshot = conversationCache.read(join(CONV_DIR, `${targetId}.db`));
   if (!snapshot) return await makeEmptyContextResult();
   return {
-    uiVersion: 88,
+    uiVersion: 91,
     ...snapshot,
     prefs: settingsStore.read(),
     quotaGroups: await fetchQuotaGroups(),
@@ -890,6 +890,12 @@ const UI_HTML = `<!DOCTYPE html>
     .panel .generation-heading { margin-bottom: var(--agy-row-gap); }
     body[data-quota-indicator="bar"] .quota-right { min-width: 0; }
     body[data-quota-indicator="bar"] .quota-line1 { grid-template-columns: 54px 104px minmax(48px, max-content); }
+    body[data-label-case="lowercase"] .panel .cache-left,
+    body[data-label-case="lowercase"] .panel .used-pct,
+    body[data-label-case="lowercase"] .panel .item-left > span:last-child,
+    body[data-label-case="lowercase"] .panel .turn-bar-label,
+    body[data-label-case="lowercase"] .panel .turn-bar-short,
+    body[data-label-case="lowercase"] .panel .quota-label { text-transform: lowercase; }
     @media(pointer:coarse) { .pv-swatch { min-height: 40px; } }
   </style>
 </head>
@@ -976,6 +982,10 @@ const UI_HTML = `<!DOCTYPE html>
     ${renderPickCard('quotaIndicator', '', 2, [
       ['ring', 'ring', PV_SVG.ring],
       ['bar', 'bar', '<span class="pv-ico-bar"><i></i></span>'],
+    ], true)}
+    ${renderPickCard('labelCase', '', 2, [
+      ['lowercase', 'lowercase', 'aa'],
+      ['titlecase', 'titlecase', 'Aa'],
     ], true)}
 
     <div class="settings-scope" data-settings-scope="features" data-i18n="featuresSection"></div>
@@ -1259,7 +1269,7 @@ const UI_HTML = `<!DOCTYPE html>
         const res = await fetch('/api/context' + qStr, { method: 'GET', headers });
         const d = await res.json();
         if (d.error) return;
-        if (d.uiVersion && d.uiVersion !== 88) {
+        if (d.uiVersion && d.uiVersion !== 91) {
           window.location.reload();
           return;
         }

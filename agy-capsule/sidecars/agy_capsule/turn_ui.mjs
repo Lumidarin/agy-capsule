@@ -3,7 +3,7 @@ export function createTurnPresentation(formatTokens) {
   const dictionaries = {
     en: {
       turnMetrics: 'Last turn', showTurnMetrics: 'Turn metrics', turnRequests: 'Requests', turnWrite: 'Write', turnThinking: 'Think', turnElapsed: 'Elapsed',
-      turnLabel: 'Turn', turnReqsLabel: 'Reqs',
+      turnLabel: 'Turn', turnReqsLabel: 'Reqs', turnReqsShort: 'Re',
       turnScopeTip: 'Totals for the current turn since your latest user message.',
       turnRequestsTip: 'Model requests sent in this turn (including retries).',
       turnWriteTip: 'Total reply and tool-call tokens generated in this turn.',
@@ -13,7 +13,7 @@ export function createTurnPresentation(formatTokens) {
     },
     'zh-CN': {
       turnMetrics: '本轮', showTurnMetrics: '本轮统计', turnRequests: '请求数', turnWrite: '写入', turnThinking: '思考', turnElapsed: '耗时',
-      turnLabel: '本轮', turnReqsLabel: '请求',
+      turnLabel: '本轮', turnReqsLabel: '请求', turnReqsShort: '请',
       turnScopeTip: '从最近一条用户消息开始，整轮对话的累计统计。',
       turnRequestsTip: '本轮发出的模型请求次数（含重试）。',
       turnWriteTip: '本轮所有请求累计生成的回复与工具调用 token。',
@@ -23,7 +23,7 @@ export function createTurnPresentation(formatTokens) {
     },
     'zh-TW': {
       turnMetrics: '本輪', showTurnMetrics: '本輪統計', turnRequests: '請求數', turnWrite: '寫入', turnThinking: '思考', turnElapsed: '耗時',
-      turnLabel: '本輪', turnReqsLabel: '請求',
+      turnLabel: '本輪', turnReqsLabel: '請求', turnReqsShort: '請',
       turnScopeTip: '從最近一條使用者訊息開始，整輪對話的累計統計。',
       turnRequestsTip: '本輪發出的模型請求次數（含重試）。',
       turnWriteTip: '本輪所有請求累計產生的回覆與工具呼叫 token。',
@@ -33,7 +33,7 @@ export function createTurnPresentation(formatTokens) {
     },
   };
   function turnMetricsMarkup(className = 'generation-block') {
-    const col = (key, label) => `<div class="turn-bar-item" data-turn-row="${key}"><span class="turn-bar-line" aria-hidden="true"></span><span class="turn-bar-label" data-i18n="${label}"></span>${key === 'requests' ? '<span class="turn-bar-short" aria-hidden="true">R</span>' : ''}<span class="turn-bar-val" data-turn-metric="${key}">—</span></div>`;
+    const col = (key, label) => `<div class="turn-bar-item" data-turn-row="${key}"><span class="turn-bar-line" aria-hidden="true"></span><span class="turn-bar-label" data-i18n="${label}"></span>${key === 'requests' ? '<span class="turn-bar-short" data-i18n="turnReqsShort" aria-hidden="true">Re</span>' : ''}<span class="turn-bar-val" data-turn-metric="${key}">—</span></div>`;
     return `<div class="${className}" data-turn-metrics-block hidden><div class="turn-bar-list">${col('elapsed', 'turnLabel')}${col('requests', 'turnReqsLabel')}${col('thinking', 'turnThinking')}${col('write', 'turnWrite')}</div></div>`;
   }
   function turnMetricsText(data = {}, t = dictionaries.en, nowMs = Date.now()) {

@@ -2,13 +2,14 @@ import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-export const DEFAULT_SETTINGS = Object.freeze({ language: 'en', settingsLanguage: 'zh-CN', panelLayout: 'natural', density: 'compact', quotaIndicator: 'ring', highlightActiveModel: false, hideUnavailableQuota: false, showCacheWarnings: true, showContextWarnings: true, showRequestErrors: true, showSpeed: true, speedAnimation: false, showRequestMetrics: true, showTurnMetrics: true });
+export const DEFAULT_SETTINGS = Object.freeze({ language: 'en', settingsLanguage: 'zh-CN', panelLayout: 'natural', density: 'compact', quotaIndicator: 'ring', labelCase: 'lowercase', highlightActiveModel: false, hideUnavailableQuota: false, showCacheWarnings: true, showContextWarnings: true, showRequestErrors: true, showSpeed: true, speedAnimation: false, showRequestMetrics: true, showTurnMetrics: true });
 const choices = {
   language: ['en', 'zh-CN', 'zh-TW'],
   settingsLanguage: ['en', 'zh-CN', 'zh-TW'],
   panelLayout: ['natural', 'matched'],
   density: ['compact', 'standard', 'spacious'],
   quotaIndicator: ['ring', 'bar'],
+  labelCase: ['lowercase', 'titlecase'],
   highlightActiveModel: [true, false],
   hideUnavailableQuota: [true, false],
   showCacheWarnings: [true, false],

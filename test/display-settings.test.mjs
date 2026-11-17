@@ -23,6 +23,7 @@ test('individual settings validate values, persist and propagate between sidecar
     assert.deepEqual(first.read(), DEFAULT_SETTINGS);
     assert.equal(first.read().language, 'en');
     assert.equal(first.read().settingsLanguage, 'zh-CN');
+    assert.equal(first.read().labelCase, 'lowercase');
     assert.equal(first.read().showSpeed, true);
     assert.equal(first.read().speedAnimation, false);
     assert.equal(first.read().showRequestMetrics, true);
@@ -40,8 +41,9 @@ test('individual settings validate values, persist and propagate between sidecar
     assert.equal(second.read().language, 'zh-TW');
     assert.equal(second.read().settingsLanguage, 'en');
     assert.equal(second.read().highlightActiveModel, true);
-    first.update({ hideUnavailableQuota: true });
+    first.update({ hideUnavailableQuota: true, labelCase: 'titlecase' });
     assert.equal(second.read().hideUnavailableQuota, true);
+    assert.equal(second.read().labelCase, 'titlecase');
     first.update({ showCacheWarnings: false, showContextWarnings: false, showRequestErrors: true });
     assert.equal(second.read().showCacheWarnings, false);
     assert.equal(second.read().showContextWarnings, false);
@@ -245,10 +247,15 @@ test('sidebar settings use flat dividers, same-row appearance blocks, refined ca
   ui.renderGeneration(pop, { requestIndex: 1, tps: 40, ttft: 1, duration: 3 }, ui.dictionaries.en, { showSpeed: true, showRequestMetrics: false });
   assert.equal(block.hidden, true);
   assert.ok(!UI_HTML.includes('data-setting-card="categoryMarker"'));
-  for (const key of ['settingsLanguage', 'language', 'panelLayout', 'density', 'quotaIndicator']) {
+  for (const key of ['settingsLanguage', 'language', 'panelLayout', 'density', 'quotaIndicator', 'labelCase']) {
     assert.ok(UI_HTML.includes(`data-pick-setting="${key}"`), `missing clickable swatch for ${key}`);
     assert.ok(!UI_HTML.includes(`name="${key}"`), `unexpected select dropdown for ${key}`);
   }
+  assert.ok(
+    settingsHtml.indexOf('data-i18n="appearanceSection"') < settingsHtml.indexOf('data-setting-card="labelCase"') &&
+    settingsHtml.indexOf('data-setting-card="labelCase"') < settingsHtml.indexOf('data-settings-scope="features"'),
+    'labelCase should be under Appearance settings'
+  );
   for (const [, key] of UI_HTML.matchAll(/data-(?:stats-)?i18n="([^"]+)"/g)) {
     if (key.startsWith('${')) continue; // Skip embedded createPresentation().toString() source template.
     assert.ok(key in ui.dictionaries.en, `missing dictionary key ${key}`);
@@ -262,6 +269,9 @@ test('sidebar settings use flat dividers, same-row appearance blocks, refined ca
     querySelectorAll: (sel) => sel === '[data-i18n]' ? [settingsNode] : sel === '[data-stats-i18n]' ? [statsNode] : [],
   };
   ui.apply(root, { language: 'en', settingsLanguage: 'zh-CN' });
+  assert.equal(root.dataset.labelCase, 'lowercase');
   assert.equal(statsNode.textContent, 'Cache');
   assert.equal(settingsNode.textContent, '显示语言');
+  ui.apply(root, { language: 'en', labelCase: 'titlecase' });
+  assert.equal(root.dataset.labelCase, 'titlecase');
 });

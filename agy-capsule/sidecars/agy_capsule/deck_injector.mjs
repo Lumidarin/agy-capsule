@@ -66,11 +66,11 @@ function pageMount(d) {
   }
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '90') {
+  if (root.getAttribute('data-deck-ver') !== '93') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '90');
+    root.setAttribute('data-deck-ver', '93');
     root._speedActivity = null;
     root.style.cssText = [
       'display: inline-flex',
@@ -465,6 +465,12 @@ function pageMount(d) {
         #deck-metrics-strip .dk-q-row:last-child { margin-bottom: 0; }
         #deck-metrics-strip[data-panel-layout="matched"] .dk-ctx-pop > .dk-panel-content,
         #deck-metrics-strip[data-panel-layout="matched"] .dk-quota-pop > .dk-panel-content { height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
+        #deck-metrics-strip[data-label-case="lowercase"] .dk-cache-left,
+        #deck-metrics-strip[data-label-case="lowercase"] .dk-used-pct,
+        #deck-metrics-strip[data-label-case="lowercase"] .dk-item-left > [data-i18n],
+        #deck-metrics-strip[data-label-case="lowercase"] .turn-bar-label,
+        #deck-metrics-strip[data-label-case="lowercase"] .turn-bar-short,
+        #deck-metrics-strip[data-label-case="lowercase"] .dk-q-label { text-transform: lowercase; }
       </style>
 
       <!-- Context Capsule + Popover -->

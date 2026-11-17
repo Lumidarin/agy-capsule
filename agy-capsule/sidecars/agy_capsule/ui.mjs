@@ -58,6 +58,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       densityTip: 'Use a shared spacing scale for context rows, quota rows, headings and section gaps. Applies to footer panels and sidebar statistics, not the settings controls.',
       quotaIndicator: 'Quota indicator', ring: 'Ring', bar: 'Bar',
       quotaIndicatorTip: 'Choose a ring or a horizontal bar for remaining quota. Applies to footer and sidebar; percentages and quota calculations stay the same.',
+      labelCase: 'Label casing', lowercase: 'Lowercase', titlecase: 'Title case',
     },
     'zh-CN': {
       cache: '缓存', turn0: '首轮', read: '读取', think: '思考', write: '写入',
@@ -114,6 +115,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       densityTip: '上下文行、配额行、标题与分组采用同一套间距尺度。同步影响底栏面板与 sidebar 统计区，不改变设置卡片本身。',
       quotaIndicator: '额度图形', ring: '圆环', bar: '进度条',
       quotaIndicatorTip: '用圆环或横向进度条展示剩余额度，同步影响底栏与 sidebar；百分比和额度计算不变。',
+      labelCase: '面板大小写', lowercase: '全小写', titlecase: '首字母大写',
     },
     'zh-TW': {
       cache: '快取', turn0: '首輪', read: '讀取', think: '思考', write: '寫入',
@@ -170,6 +172,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       densityTip: '上下文列、配額列、標題與分組採用同一套間距尺度。同步影響底欄面板與 sidebar 統計區，不改變設定卡片本身。',
       quotaIndicator: '額度圖形', ring: '圓環', bar: '進度條',
       quotaIndicatorTip: '用圓環或橫向進度條展示剩餘額度，同步影響底欄與 sidebar；百分比和額度計算不變。',
+      labelCase: '面板大小寫', lowercase: '全小寫', titlecase: '首字母大寫',
     },
   };
   function locale(prefs = {}, candidates = []) {
@@ -339,7 +342,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     return view;
   }
   function appearance(prefs = {}) {
-    return { panelLayout: prefs.panelLayout || 'natural', density: prefs.density || 'compact', quotaIndicator: prefs.quotaIndicator || 'ring' };
+    return { panelLayout: prefs.panelLayout || 'natural', density: prefs.density || 'compact', quotaIndicator: prefs.quotaIndicator || 'ring', labelCase: prefs.labelCase || 'lowercase' };
   }
   function apply(root, prefs = {}) {
     root.style.colorScheme = '';
@@ -370,7 +373,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     return t;
   }
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  return { version: 51, dictionaries, locale, systemLocale, apply, appearance, escapeHtml, formatTokens, cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
+  return { version: 54, dictionaries, locale, systemLocale, apply, appearance, escapeHtml, formatTokens, cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
 }
 
-export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 51) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;
+export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 54) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;

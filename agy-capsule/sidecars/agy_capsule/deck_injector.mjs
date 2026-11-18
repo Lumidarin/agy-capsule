@@ -966,10 +966,8 @@ function pageMount(d) {
   const motionEnabled = d.prefs?.speedAnimation === true;
   pillSpeed.hidden = d.prefs?.showSpeed === false || (!d.turnSpeed && !running);
   const speedValue = pillSpeed.querySelector('[data-generation="speed"]');
-  const turnSpeedView = presentation.generationText(d.turnSpeed?.generation || {}, labels);
-  if (speedValue.textContent !== turnSpeedView.speed) speedValue.textContent = turnSpeedView.speed;
-  const speedTitle = hasSpeed ? turnSpeedView.speedTitle : '';
-  if (pillSpeed.title !== speedTitle) pillSpeed.title = speedTitle;
+  const speedText = hasSpeed ? tps.toFixed(1) + ' tok/s' : '—';
+  if (speedValue.textContent !== speedText) speedValue.textContent = speedText;
   let activity = root._speedActivity;
   if (!activity || activity.turnKey !== turnKey) {
     activity = root._speedActivity = { turnKey, running: false, requestIndex: null, coolUntil: 0 };
@@ -992,6 +990,7 @@ function pageMount(d) {
   }
   const contextPill = root.querySelector('[data-el="grpCtx"] .dk-pill');
   if (contextPill.getAttribute('aria-label') !== labels.context) contextPill.setAttribute('aria-label', labels.context);
+  for (const node of [contextPill, ...contextPill.querySelectorAll('[title]')]) node.removeAttribute('title');
   const quotaPill = root.querySelector('[data-el="grpQuota"] .dk-pill');
   if (quotaPill.getAttribute('aria-label') !== labels.quota) quotaPill.setAttribute('aria-label', labels.quota);
 

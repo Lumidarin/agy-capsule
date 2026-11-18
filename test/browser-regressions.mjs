@@ -104,8 +104,12 @@ await test('Only stream mode marks a fallback; the footer capsule always shows t
   const group = page.locator('#agy-capsule-host [data-el="grpCtx"]');
   const pillSpeed = group.locator('[data-el="pillSpeed"]');
   assert.equal(await pillSpeed.textContent(), '54.5 tok/s');
-  assert.equal(await pillSpeed.getAttribute('title'), 'Speed 54.5 tok/s = Out 60 / (TTFT 1.00s + Stream 0.10s)');
-  await group.locator('.dk-pill').click();
+  const pill = group.locator('.dk-pill');
+  await pillSpeed.hover();
+  await group.locator('.dk-pop').waitFor({ state: 'visible' });
+  assert.equal(await pill.getAttribute('title'), null);
+  assert.equal(await pill.locator('[title]').count(), 0);
+  await pill.click();
   assert.equal(await group.locator('.dk-pop').evaluate(el => getComputedStyle(el).animationName), 'none');
   await checkModes(group.locator('[data-el="speedToggle"]'));
 });

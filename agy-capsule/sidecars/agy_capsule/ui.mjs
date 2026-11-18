@@ -43,8 +43,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       formulaSpeed: 'Speed', formulaStream: 'Stream', formulaStreamPart: 'Stream', formulaOut: 'Out', formulaTtft: 'TTFT', formulaTotal: 'Total',
       speedTip: "Generation speed = total output ÷ request duration (TTFT + stream).",
       streamSpeedTip: "Stream speed = total output ÷ stream time (excludes TTFT). Click to switch.",
-      streamTooShort: 'Stream time too short ({time}); showing total speed',
-      streamTooFast: 'Stream speed exceeds {limit} tok/s; showing total speed',
+      streamTooShort: 'Stream time too short ({time}); showing total speed: ',
+      streamTooFast: 'Stream speed exceeds {limit} tok/s; showing total speed: ',
       outputTip: "Output of latest request",
       ttftTip: "First-token wait to total duration of the latest request.",
       totalTimeTip: "Request duration (TTFT + stream); excludes tool execution.",
@@ -101,8 +101,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       formulaSpeed: '生成速率', formulaStream: '流式速率', formulaStreamPart: '流式', formulaOut: '产出', formulaTtft: '首字', formulaTotal: '总耗时',
       speedTip: "生成速度 = 总输出 ÷ 单次请求总耗时（首字等待 + 流式输出）。",
       streamSpeedTip: "纯流式速度 = 总输出 ÷ 流式输出耗时（不含首字等待），点击切换。",
-      streamTooShort: '流式时间过短（{time}），显示总速度',
-      streamTooFast: '流式速度超过 {limit} tok/s，显示总速度',
+      streamTooShort: '流式时间过短（{time}），显示总速度：',
+      streamTooFast: '流式速度超过 {limit} tok/s，显示总速度：',
       outputTip: "最近一次请求输出",
       ttftTip: "首字等待耗时 – 单次请求总耗时（已包含首字等待）。",
       totalTimeTip: "请求总耗时（首字等待 + 流式输出，不含工具执行）。",
@@ -159,8 +159,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       formulaSpeed: '生成速率', formulaStream: '串流速率', formulaStreamPart: '串流', formulaOut: '產出', formulaTtft: '首字', formulaTotal: '總耗時',
       speedTip: "生成速度 = 總輸出 ÷ 單次請求總耗時（首字等待 + 串流輸出）。",
       streamSpeedTip: "純串流速度 = 總輸出 ÷ 串流輸出耗時（不含首字等待），點擊切換。",
-      streamTooShort: '串流時間過短（{time}），顯示總速度',
-      streamTooFast: '串流速度超過 {limit} tok/s，顯示總速度',
+      streamTooShort: '串流時間過短（{time}），顯示總速度：',
+      streamTooFast: '串流速度超過 {limit} tok/s，顯示總速度：',
       outputTip: "最近一次請求輸出",
       ttftTip: "首字等待耗時 – 單次請求總耗時（已包含首字等待）。",
       totalTimeTip: "請求總耗時（首字等待 + 串流輸出，不含工具執行）。",
@@ -452,7 +452,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     const streamExact = tooltipSeconds(rawStream);
     const totalExact = tooltipSeconds(g.duration);
     const fallbackTitle = fallbackReason && tpsNum !== null && g.duration > 0 && outExact
-      ? `${fallbackReason}: ${outExact} / ${totalExact} = *${tpsNum} tok/s` : '';
+      ? `${fallbackReason}${outExact} / ${totalExact} = *${tpsNum} tok/s` : '';
     const speedTitle = tpsNum !== null && outExact && ttftExact && streamExact
       ? `${t.formulaSpeed} ${tpsNum} tok/s = ${t.formulaOut} ${outExact} / (${t.formulaTtft} ${ttftExact} + ${t.formulaStreamPart} ${streamExact})`
       : tpsNum !== null && outExact && totalExact
@@ -630,11 +630,11 @@ export function createPresentation(turnFactory = createTurnPresentation) {
   }
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   return {
-    version: 64, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens,
+    version: 65, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens,
     quotaColor, makeRingSvg, formatGroupTitle, formatBucketLabel, activeGroupColor, matchActiveGroup, contextBreakdown, renderCacheRing,
     cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts,
     generationText, generationMarkup, renderGeneration, ...turnMethods,
   };
 }
 
-export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 64) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;
+export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 65) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;

@@ -262,7 +262,7 @@ function resolveLatestConvId(preferredId) {
 
 async function makeEmptyContextResult() {
   return {
-    uiVersion: 101,
+    uiVersion: 102,
     turnSpeed: null,
     turnMetrics: null,
     requestError: classifyRequestError(),
@@ -310,7 +310,7 @@ async function inspectConversation(convId, exact = false) {
   const snapshot = conversationCache.read(join(CONV_DIR, `${targetId}.db`), prefs.showTurnMetrics);
   if (!snapshot) return await makeEmptyContextResult();
   return {
-    uiVersion: 101,
+    uiVersion: 102,
     ...snapshot,
     prefs,
     ...await fetchQuota(),
@@ -1682,7 +1682,7 @@ ${SIDEBAR_SKIN_CSS}
         const res = await fetch('/api/context' + qStr, { method: 'GET', headers });
         const d = await res.json();
         if (d.error) return;
-        if (d.uiVersion && d.uiVersion !== 101) {
+        if (d.uiVersion && d.uiVersion !== 102) {
           window.location.reload();
           return;
         }

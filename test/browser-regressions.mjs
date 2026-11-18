@@ -73,7 +73,7 @@ await test('At 640px removing all reset times leaves the three quota card widths
   assert.deepEqual(await widths(), withReset);
 });
 
-await test('Footer capsule, pinned panel and sidebar mark fallback speeds with the correct request formula', async t => {
+await test('Only stream mode marks a fallback; the footer capsule always shows total speed', async t => {
   const browser = await chromium.launch(launch);
   t.after(() => browser.close());
   const page = await browser.newPage({ reducedMotion: 'reduce' });
@@ -83,10 +83,19 @@ await test('Footer capsule, pinned panel and sidebar mark fallback speeds with t
   data.turnSpeed.generation = { requestIndex: 4, output: 60, ttft: 1, streaming: 0.1, duration: 1.1, tps: 60 / 1.1 };
   await openSidebar(page, data);
   const sidebar = page.locator('#sb-speed-toggle');
-  await sidebar.getByText('*38.5 tok/s', { exact: true }).waitFor();
-  await sidebar.click();
-  assert.equal(await sidebar.locator('[data-generation="speed"]').textContent(), '*38.5 tok/s');
-  assert.match(await sidebar.getAttribute('title'), /too short.*40 \/ 1\.04s = \*38\.5 tok\/s/);
+  async function checkModes(toggle) {
+    const speed = toggle.locator('[data-generation="speed"]');
+    const totalTitle = 'Speed 38.5 tok/s = Out 40 / (TTFT 1.00s + Stream 0.04s)';
+    await toggle.getByText('38.5 tok/s', { exact: true }).waitFor();
+    assert.equal(await toggle.getAttribute('title'), totalTitle);
+    await toggle.click();
+    assert.equal(await speed.textContent(), '*38.5 tok/s');
+    assert.match(await toggle.getAttribute('title'), /too short.*40 \/ 1\.04s = \*38\.5 tok\/s/);
+    await toggle.click();
+    assert.equal(await speed.textContent(), '38.5 tok/s');
+    assert.equal(await toggle.getAttribute('title'), totalTitle);
+  }
+  await checkModes(sidebar);
 
   await page.goto('about:blank');
   await page.setContent('<div style="position:absolute;bottom:0;width:900px;display:flex" class="agy-composer-footer"><div style="display:flex;flex:1"><button>Gemini</button></div><button>Send</button></div>');
@@ -94,14 +103,11 @@ await test('Footer capsule, pinned panel and sidebar mark fallback speeds with t
   assert.equal(await apply(page, data), true);
   const group = page.locator('#agy-capsule-host [data-el="grpCtx"]');
   const pillSpeed = group.locator('[data-el="pillSpeed"]');
-  assert.equal(await pillSpeed.textContent(), '*54.5 tok/s');
-  assert.match(await pillSpeed.getAttribute('title'), /exceeds 500.*60 \/ 1\.10s = \*54\.5 tok\/s/);
+  assert.equal(await pillSpeed.textContent(), '54.5 tok/s');
+  assert.equal(await pillSpeed.getAttribute('title'), 'Speed 54.5 tok/s = Out 60 / (TTFT 1.00s + Stream 0.10s)');
   await group.locator('.dk-pill').click();
   assert.equal(await group.locator('.dk-pop').evaluate(el => getComputedStyle(el).animationName), 'none');
-  const toggle = group.locator('[data-el="speedToggle"]');
-  await toggle.click();
-  assert.equal(await toggle.locator('[data-generation="speed"]').textContent(), '*38.5 tok/s');
-  assert.match(await toggle.getAttribute('title'), /too short.*40 \/ 1\.04s = \*38\.5 tok\/s/);
+  await checkModes(group.locator('[data-el="speedToggle"]'));
 });
 
 await test('Footer reveals and wider speed values never overlap the native controls', async t => {

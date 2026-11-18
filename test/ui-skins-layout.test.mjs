@@ -130,7 +130,7 @@ test('buildRuntimeBundle executes cleanly in VM and UI_HTML inline script has va
   assert.equal(res, true);
   assert.equal(typeof sandbox.__agyCapsuleDeck.readState, 'function');
   assert.equal(typeof sandbox.__agyCapsulePresentation.renderCacheRing, 'function');
-  assert.equal(sandbox.__agyCapsulePresentation.version, 62);
+  assert.equal(sandbox.__agyCapsulePresentation.version, 63);
 
   const scriptMatch = UI_HTML.match(/<script>\n([\s\S]*)\n  <\/script>\n<\/body>/);
   assert.ok(scriptMatch, 'UI_HTML should contain inline script');

@@ -262,7 +262,7 @@ function resolveLatestConvId(preferredId) {
 
 async function makeEmptyContextResult() {
   return {
-    uiVersion: 100,
+    uiVersion: 101,
     turnSpeed: null,
     turnMetrics: null,
     requestError: classifyRequestError(),
@@ -310,7 +310,7 @@ async function inspectConversation(convId, exact = false) {
   const snapshot = conversationCache.read(join(CONV_DIR, `${targetId}.db`), prefs.showTurnMetrics);
   if (!snapshot) return await makeEmptyContextResult();
   return {
-    uiVersion: 100,
+    uiVersion: 101,
     ...snapshot,
     prefs,
     ...await fetchQuota(),
@@ -1072,8 +1072,11 @@ ${SIDEBAR_SKIN_CSS}
     .quota-group:not(:has(.quota-mid:not(:empty))) .quota-mid { display: none; }
     #quota-root.stats-quota { grid-template-columns: minmax(48px, max-content) minmax(18px, 1fr) max-content minmax(0, max-content); column-gap: 8px; row-gap: 0; }
     body[data-language^="zh"] #quota-root.stats-quota { grid-template-columns: minmax(38px, max-content) minmax(18px, 1fr) max-content minmax(0, max-content); }
-    #quota-root.stats-quota:not(:has(.quota-mid:not(:empty))) { grid-template-columns: minmax(48px, max-content) minmax(18px, 1fr) max-content; }
-    body[data-language^="zh"] #quota-root.stats-quota:not(:has(.quota-mid:not(:empty))) { grid-template-columns: minmax(38px, max-content) minmax(18px, 1fr) max-content; }
+    /* Only narrow cards share their internal columns through the parent grid. */
+    @container stats (width < 420px) {
+      #quota-root.stats-quota:not(:has(.quota-mid:not(:empty))) { grid-template-columns: minmax(48px, max-content) minmax(18px, 1fr) max-content; }
+      body[data-language^="zh"] #quota-root.stats-quota:not(:has(.quota-mid:not(:empty))) { grid-template-columns: minmax(38px, max-content) minmax(18px, 1fr) max-content; }
+    }
     #quota-root.stats-quota .quota-group { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
     #quota-root.stats-quota .quota-title-row { grid-column: 1 / -1; }
     #quota-root.stats-quota .quota-bucket, #quota-root.stats-quota .quota-line1 { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
@@ -1679,7 +1682,7 @@ ${SIDEBAR_SKIN_CSS}
         const res = await fetch('/api/context' + qStr, { method: 'GET', headers });
         const d = await res.json();
         if (d.error) return;
-        if (d.uiVersion && d.uiVersion !== 100) {
+        if (d.uiVersion && d.uiVersion !== 101) {
           window.location.reload();
           return;
         }

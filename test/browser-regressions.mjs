@@ -25,13 +25,7 @@ const snapshot = () => ({
   quotaGroups: [{ displayName: 'Gemini Models', buckets: [{ window: '5h', remainingFraction: .58 }, { window: 'weekly', remainingFraction: .55 }] }],
 });
 
-await test('Sidebar clears empty or missing quotas and renders a later fresh snapshot', async t => {
-  const browser = await chromium.launch(launch);
-  t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width: 360, height: 900 } });
-  const errors = [];
-  page.on('pageerror', error => errors.push(error.message));
-  const data = snapshot();
+async function openSidebar(page, data) {
   await page.route('http://agy.test/**', route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/context') return route.fulfill({ json: data });
@@ -39,6 +33,16 @@ await test('Sidebar clears empty or missing quotas and renders a later fresh sna
     return route.fulfill({ contentType: 'text/html', body: UI_HTML });
   });
   await page.goto('http://agy.test/');
+}
+
+await test('Sidebar clears empty or missing quotas and renders a later fresh snapshot', async t => {
+  const browser = await chromium.launch(launch);
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 360, height: 900 } });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const data = snapshot();
+  await openSidebar(page, data);
   await page.waitForFunction(() => document.querySelectorAll('#quota-root .quota-group').length === 1);
   const quotas = data.quotaGroups;
   for (const empty of [[], null]) {
@@ -49,6 +53,55 @@ await test('Sidebar clears empty or missing quotas and renders a later fresh sna
     await page.waitForFunction(() => document.querySelectorAll('#quota-root .quota-group').length === 1);
   }
   assert.deepEqual(errors, []);
+});
+
+await test('At 640px removing all reset times leaves the three quota card widths unchanged', async t => {
+  const browser = await chromium.launch(launch);
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 640, height: 800 } });
+  const data = snapshot();
+  data.quotaGroups = ['Gemini', 'Claude', 'Flash'].map(displayName => ({
+    displayName, buckets: [{ window: '5h', remainingFraction: 0.6, resetTime: new Date(Date.now() + 3600000).toISOString() }],
+  }));
+  await openSidebar(page, data);
+  await page.waitForFunction(() => document.querySelectorAll('#quota-root .quota-mid:not(:empty)').length === 3);
+  const widths = () => page.locator('#quota-root .quota-group').evaluateAll(cards => cards.map(card => card.getBoundingClientRect().width));
+  const withReset = await widths();
+  assert.ok(withReset.every(width => width >= 210));
+  for (const group of data.quotaGroups) delete group.buckets[0].resetTime;
+  await page.waitForFunction(() => document.querySelectorAll('#quota-root .quota-mid:empty').length === 3);
+  assert.deepEqual(await widths(), withReset);
+});
+
+await test('Footer capsule, pinned panel and sidebar mark fallback speeds with the correct request formula', async t => {
+  const browser = await chromium.launch(launch);
+  t.after(() => browser.close());
+  const page = await browser.newPage({ reducedMotion: 'reduce' });
+  const data = snapshot();
+  data.prefs.showSpeed = true;
+  data.generation = { requestIndex: 5, output: 40, ttft: 1, streaming: 0.04, duration: 1.04, tps: 40 / 1.04 };
+  data.turnSpeed.generation = { requestIndex: 4, output: 60, ttft: 1, streaming: 0.1, duration: 1.1, tps: 60 / 1.1 };
+  await openSidebar(page, data);
+  const sidebar = page.locator('#sb-speed-toggle');
+  await sidebar.getByText('*38.5 tok/s', { exact: true }).waitFor();
+  await sidebar.click();
+  assert.equal(await sidebar.locator('[data-generation="speed"]').textContent(), '*38.5 tok/s');
+  assert.match(await sidebar.getAttribute('title'), /too short.*40 \/ 1\.04s = \*38\.5 tok\/s/);
+
+  await page.goto('about:blank');
+  await page.setContent('<div style="position:absolute;bottom:0;width:900px;display:flex" class="agy-composer-footer"><div style="display:flex;flex:1"><button>Gemini</button></div><button>Send</button></div>');
+  await page.evaluate(buildRuntimeBundle(owner).code);
+  assert.equal(await apply(page, data), true);
+  const group = page.locator('#agy-capsule-host [data-el="grpCtx"]');
+  const pillSpeed = group.locator('[data-el="pillSpeed"]');
+  assert.equal(await pillSpeed.textContent(), '*54.5 tok/s');
+  assert.match(await pillSpeed.getAttribute('title'), /exceeds 500.*60 \/ 1\.10s = \*54\.5 tok\/s/);
+  await group.locator('.dk-pill').click();
+  assert.equal(await group.locator('.dk-pop').evaluate(el => getComputedStyle(el).animationName), 'none');
+  const toggle = group.locator('[data-el="speedToggle"]');
+  await toggle.click();
+  assert.equal(await toggle.locator('[data-generation="speed"]').textContent(), '*38.5 tok/s');
+  assert.match(await toggle.getAttribute('title'), /too short.*40 \/ 1\.04s = \*38\.5 tok\/s/);
 });
 
 await test('Footer reveals and wider speed values never overlap the native controls', async t => {
@@ -110,6 +163,7 @@ await test('Pinned popovers fit a narrower clipping container and regain their w
     const group = page.locator(`#agy-capsule-host [data-el="grp${name}"]`);
     const panel = group.locator('.dk-pop');
     await group.locator('.dk-pill').click();
+    await panel.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
     const wide = await panel.boundingBox();
     assert.ok(wide.width >= 228);
     await clipper.evaluate(el => { el.style.width = '210px'; });

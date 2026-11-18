@@ -2,6 +2,7 @@
 import { createTurnPresentation } from './turn_ui.mjs';
 
 export function createPresentation(turnFactory = createTurnPresentation) {
+  const MAX_STREAM_TPS = 500;
   const dictionaries = {
     en: {
       cache: 'Cache', turn0: 'Turn0', read: 'Read', think: 'Think', write: 'Write',
@@ -42,13 +43,15 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       formulaSpeed: 'Speed', formulaStream: 'Stream', formulaStreamPart: 'Stream', formulaOut: 'Out', formulaTtft: 'TTFT', formulaTotal: 'Total',
       speedTip: "Generation speed = total output ÷ request duration (TTFT + stream).",
       streamSpeedTip: "Stream speed = total output ÷ stream time (excludes TTFT). Click to switch.",
+      streamTooShort: 'Stream time too short ({time}); showing total speed',
+      streamTooFast: 'Stream speed exceeds {limit} tok/s; showing total speed',
       outputTip: "Output of latest request",
       ttftTip: "First-token wait to total duration of the latest request.",
       totalTimeTip: "Request duration (TTFT + stream); excludes tool execution.",
       appearanceSection: 'Appearance', featuresSection: 'Features',
       uiSkin: 'UI skin', frostedSkin: 'Frosted', nativeSkin: 'Native',
-      speedPairTip: 'Capsule speed: last completed request in the current turn (— until ready). Effects: breathing dot while running; holds speed color 15s after stopping (≥25 green, 10–25 yellow, <10 red).',
-      requestSectionTip: 'Shows Last request (cache, TTFT–total duration, and generation speed of the latest call). Top / Bottom moves this section—or the Cache line when disabled—in panels.',
+      speedPairTip: 'Capsule speed: last completed request in the current turn (— until ready). Effects: breathing dot while running; holds speed color 15s after stopping (≥25 green, 10–25 yellow, <10 red). An * marks a fallback to total speed.',
+      requestSectionTip: 'Shows Last request (cache, TTFT–total duration, and generation speed of the latest call). Top / Bottom moves this section—or the Cache line when disabled—in panels. An * marks a fallback to total speed.',
       turnSectionTip: 'Aggregates requests, elapsed wall time, write, and thinking tokens from your latest user message to completion.',
       panelLayout: 'Panel height', naturalLayout: 'Natural', matchedLayout: 'Matched',
       density: 'Panel spacing', compact: 'Compact', standard: 'Standard', spacious: 'Spacious',
@@ -98,13 +101,15 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       formulaSpeed: '生成速率', formulaStream: '流式速率', formulaStreamPart: '流式', formulaOut: '产出', formulaTtft: '首字', formulaTotal: '总耗时',
       speedTip: "生成速度 = 总输出 ÷ 单次请求总耗时（首字等待 + 流式输出）。",
       streamSpeedTip: "纯流式速度 = 总输出 ÷ 流式输出耗时（不含首字等待），点击切换。",
+      streamTooShort: '流式时间过短（{time}），显示总速度',
+      streamTooFast: '流式速度超过 {limit} tok/s，显示总速度',
       outputTip: "最近一次请求输出",
       ttftTip: "首字等待耗时 – 单次请求总耗时（已包含首字等待）。",
       totalTimeTip: "请求总耗时（首字等待 + 流式输出，不含工具执行）。",
       appearanceSection: '外观', featuresSection: '功能',
       uiSkin: '面板风格', frostedSkin: '磨砂', nativeSkin: '原生',
-      speedPairTip: '底栏速度：本轮最近一次已完成请求的速度（未完成显示 —）。动效：运行中圆点呼吸，结束后保色 15 秒再变灰（≥25 绿、10–25 黄、<10 红）。',
-      requestSectionTip: '在面板展示最近一次请求的缓存、TTFT–总耗时与生成速度；顶部 / 底部同时控制该区（或关闭时的单行缓存）位置，与底栏胶囊独立。',
+      speedPairTip: '底栏速度：本轮最近一次已完成请求的速度（未完成显示 —）。动效：运行中圆点呼吸，结束后保色 15 秒再变灰（≥25 绿、10–25 黄、<10 红）。带 * 表示已回退为总速度。',
+      requestSectionTip: '在面板展示最近一次请求的缓存、TTFT–总耗时与生成速度；顶部 / 底部同时控制该区（或关闭时的单行缓存）位置，与底栏胶囊独立。带 * 表示已回退为总速度。',
       turnSectionTip: '从最近一条用户消息到结束，按整轮累计请求数、耗时、写入与思考。',
       panelLayout: '面板高度', naturalLayout: '自然高度', matchedLayout: '对齐高度',
       density: '面板间距', compact: '紧凑', standard: '标准', spacious: '舒展',
@@ -154,13 +159,15 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       formulaSpeed: '生成速率', formulaStream: '串流速率', formulaStreamPart: '串流', formulaOut: '產出', formulaTtft: '首字', formulaTotal: '總耗時',
       speedTip: "生成速度 = 總輸出 ÷ 單次請求總耗時（首字等待 + 串流輸出）。",
       streamSpeedTip: "純串流速度 = 總輸出 ÷ 串流輸出耗時（不含首字等待），點擊切換。",
+      streamTooShort: '串流時間過短（{time}），顯示總速度',
+      streamTooFast: '串流速度超過 {limit} tok/s，顯示總速度',
       outputTip: "最近一次請求輸出",
       ttftTip: "首字等待耗時 – 單次請求總耗時（已包含首字等待）。",
       totalTimeTip: "請求總耗時（首字等待 + 串流輸出，不含工具執行）。",
       appearanceSection: '外觀', featuresSection: '功能',
       uiSkin: '面板風格', frostedSkin: '磨砂', nativeSkin: '原生',
-      speedPairTip: '底欄速度：本輪最近一次已完成請求的速度（未完成顯示 —）。動效：執行中圓點呼吸，結束後保色 15 秒再變灰（≥25 綠、10–25 黃、<10 紅）。',
-      requestSectionTip: '於面板展示最近一次請求的快取、TTFT–總耗時與生成速度；頂部 / 底部同時控制該區（或關閉時的單行快取）位置，與底欄膠囊獨立。',
+      speedPairTip: '底欄速度：本輪最近一次已完成請求的速度（未完成顯示 —）。動效：執行中圓點呼吸，結束後保色 15 秒再變灰（≥25 綠、10–25 黃、<10 紅）。帶 * 表示已回退為總速度。',
+      requestSectionTip: '於面板展示最近一次請求的快取、TTFT–總耗時與生成速度；頂部 / 底部同時控制該區（或關閉時的單行快取）位置，與底欄膠囊獨立。帶 * 表示已回退為總速度。',
       turnSectionTip: '從最近一條使用者訊息到結束，依整輪累計請求數、耗時、寫入與思考。',
       panelLayout: '面板高度', naturalLayout: '自然高度', matchedLayout: '對齊高度',
       density: '面板間距', compact: '緊湊', standard: '標準', spacious: '舒展',
@@ -418,7 +425,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
   }
   function generationText(g = {}, t = dictionaries.en) {
     const seconds = n => n !== null && n !== undefined && Number.isFinite(n) ? n.toFixed(1) + 's' : '—';
-    const fmtSecExact = n => n !== null && n !== undefined && Number.isFinite(Number(n)) ? Number(n).toFixed(Number(n) >= 10 ? 1 : 2) + 's' : '';
+    // Keep the reported nanoseconds in formulas; a small positive denominator must not read "0.00s".
+    const fmtSecExact = n => Number.isFinite(n) ? n.toFixed(9).replace(/(\.\d{2}\d*?)0+$/, '$1') + 's' : '';
     const split = g.reply !== null && g.reply !== undefined && g.thinking !== null && g.thinking !== undefined
       ? `${t.reply} ${formatTokens(g.reply)} + ${t.thinking} ${formatTokens(g.thinking)}` : '';
     const ttft = seconds(g.ttft);
@@ -431,21 +439,27 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     const rawStream = g.streaming !== null && g.streaming !== undefined && Number.isFinite(g.streaming)
       ? g.streaming
       : (g.duration !== null && g.duration !== undefined && g.ttft !== null && g.ttft !== undefined
-          ? Math.max(0, Number((g.duration - g.ttft).toFixed(2)))
+          ? Math.max(0, Number((g.duration - g.ttft).toFixed(9)))
           : null);
-    const streamTps = g.output !== null && g.output > 0 && rawStream !== null && rawStream > 0.05 ? g.output / rawStream : g.tps;
+    const measuredTps = g.output > 0 && rawStream > 0 ? g.output / rawStream : null;
+    const fallbackReason = rawStream !== null && rawStream <= 0.05 ? t.streamTooShort.replace('{time}', fmtSecExact(rawStream))
+      : measuredTps > MAX_STREAM_TPS ? t.streamTooFast.replace('{limit}', MAX_STREAM_TPS) : '';
+    const streamTps = fallbackReason ? g.tps : measuredTps;
     const tpsNum = g.tps !== null && g.tps !== undefined && Number.isFinite(g.tps) ? g.tps.toFixed(1) : null;
     const streamTpsNum = streamTps !== null && streamTps !== undefined && Number.isFinite(streamTps) ? streamTps.toFixed(1) : null;
     const outExact = g.output !== null && g.output !== undefined && g.output > 0 ? String(Math.round(g.output)) : '';
     const ttftExact = fmtSecExact(g.ttft);
     const streamExact = fmtSecExact(rawStream);
     const totalExact = fmtSecExact(g.duration);
+    const fallbackTitle = fallbackReason && tpsNum !== null && g.duration > 0 && outExact
+      ? `${fallbackReason}: ${outExact} / ${totalExact} = *${tpsNum} tok/s` : '';
+    const prefix = fallbackTitle ? '*' : '';
     const speedTitle = tpsNum !== null && outExact && ttftExact && streamExact
       ? `${t.formulaSpeed} ${tpsNum} tok/s = ${t.formulaOut} ${outExact} / (${t.formulaTtft} ${ttftExact} + ${t.formulaStreamPart} ${streamExact})`
       : tpsNum !== null && outExact && totalExact
         ? `${t.formulaSpeed} ${tpsNum} tok/s = ${t.formulaOut} ${outExact} / ${t.formulaTotal} ${totalExact}`
         : [tpsNum !== null ? `${t.formulaSpeed} ${tpsNum} tok/s` : '', ttftExact ? `${t.formulaTtft} ${ttftExact}` : '', totalExact ? `${t.formulaTotal} ${totalExact}` : ''].filter(Boolean).join(' · ') || `${t.speedTip}${outputLine}`;
-    const streamSpeedTitle = streamTpsNum !== null && outExact && streamExact
+    const streamSpeedTitle = streamTpsNum !== null && outExact && rawStream > 0 && !fallbackReason
       ? `${t.formulaStream} ${streamTpsNum} tok/s = ${t.formulaOut} ${outExact} / ${t.formulaStreamPart} ${streamExact}`
       : [streamTpsNum !== null ? `${t.formulaStream} ${streamTpsNum} tok/s` : '', streamExact ? `${t.formulaStreamPart} ${streamExact}` : ''].filter(Boolean).join(' · ') || `${t.streamSpeedTip}${outputLine}`;
     const timingTitle = `${t.ttftTip}\nTTFT ${ttft} · ${t.streamTime} ${streamTime} · ${t.totalTime} ${totalTime}`;
@@ -454,8 +468,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       ? `${t.think} ${formatTokens(g.thinking)}`
       : g.output !== null && g.output !== undefined ? t.outputShort : '—';
     return {
-      speed: tpsNum !== null ? tpsNum + ' tok/s' : '—',
-      streamSpeed: streamTpsNum !== null ? streamTpsNum + ' tok/s' : '—',
+      speed: tpsNum !== null ? prefix + tpsNum + ' tok/s' : '—',
+      streamSpeed: streamTpsNum !== null ? prefix + streamTpsNum + ' tok/s' : '—',
       rawTps: g.tps ?? null,
       rawStreamTps: streamTps ?? null,
       output: formatTokens(g.output),
@@ -464,8 +478,8 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       totalTime,
       streamTime,
       timing,
-      speedTitle,
-      streamSpeedTitle,
+      speedTitle: fallbackTitle || speedTitle,
+      streamSpeedTitle: fallbackTitle || streamSpeedTitle,
       outputTitle: `${t.outputTip}: ${formatTokens(g.output)} tokens${split ? ` (${split})` : ''}`,
       ttftTitle: t.ttftTip,
       totalTimeTitle,
@@ -617,11 +631,11 @@ export function createPresentation(turnFactory = createTurnPresentation) {
   }
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   return {
-    version: 62, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens,
+    version: 63, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens,
     quotaColor, makeRingSvg, formatGroupTitle, formatBucketLabel, activeGroupColor, matchActiveGroup, contextBreakdown, renderCacheRing,
     cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts,
     generationText, generationMarkup, renderGeneration, ...turnMethods,
   };
 }
 
-export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 62) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;
+export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 63) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;

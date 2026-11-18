@@ -117,11 +117,11 @@ function pageMount(d) {
   }
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '108') {
+  if (root.getAttribute('data-deck-ver') !== '109') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '108');
+    root.setAttribute('data-deck-ver', '109');
     root._speedActivity = null;
     root._motionPrev = null;
     root.style.cssText = [
@@ -233,9 +233,7 @@ function pageMount(d) {
         @keyframes dk-speed-breathe { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.78); } }
         @keyframes dk-pop-in { from { opacity: 0; transform: translateY(3px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
         @media (prefers-reduced-motion: reduce) {
-          #deck-metrics-strip .dk-speed[data-motion="active"] .dk-speed-dot,
-          #deck-metrics-strip .dk-grp:hover .dk-pop,
-          #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-pop { animation: none; }
+          #deck-metrics-strip .dk-speed[data-motion="active"] .dk-speed-dot { animation: none; }
           #deck-metrics-strip .dk-speed[data-motion] { transition: none; }
           #deck-metrics-strip [data-k="pillCtx"], #deck-metrics-strip [data-el="ctxIconSvg"],
           #deck-metrics-strip .dk-cache-pct, #deck-metrics-strip .dk-cache-k, #deck-metrics-strip .dk-q-group, #deck-metrics-strip .dk-q-active { transition: none; }
@@ -309,7 +307,10 @@ function pageMount(d) {
         #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-pop {
           display: block;
           pointer-events: auto;
-          animation: dk-pop-in 0.13s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        @media (prefers-reduced-motion: no-preference) {
+          #deck-metrics-strip .dk-grp:hover .dk-pop,
+          #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-pop { animation: dk-pop-in 0.13s cubic-bezier(0.22, 1, 0.36, 1); }
         }
         #deck-metrics-strip[data-pinned] .dk-grp:not([data-pinned="true"]):hover .dk-pop,
         #deck-metrics-strip .dk-grp[data-dismissed="true"] .dk-pop { display: none; }
@@ -965,8 +966,10 @@ function pageMount(d) {
   const motionEnabled = d.prefs?.speedAnimation === true;
   pillSpeed.hidden = d.prefs?.showSpeed === false || (!d.turnSpeed && !running);
   const speedValue = pillSpeed.querySelector('[data-generation="speed"]');
-  const speedText = hasSpeed ? tps.toFixed(1) + ' tok/s' : '—';
-  if (speedValue.textContent !== speedText) speedValue.textContent = speedText;
+  const turnSpeedView = presentation.generationText(d.turnSpeed?.generation || {}, labels);
+  if (speedValue.textContent !== turnSpeedView.speed) speedValue.textContent = turnSpeedView.speed;
+  const speedTitle = hasSpeed ? turnSpeedView.speedTitle : '';
+  if (pillSpeed.title !== speedTitle) pillSpeed.title = speedTitle;
   let activity = root._speedActivity;
   if (!activity || activity.turnKey !== turnKey) {
     activity = root._speedActivity = { turnKey, running: false, requestIndex: null, coolUntil: 0 };
@@ -989,7 +992,6 @@ function pageMount(d) {
   }
   const contextPill = root.querySelector('[data-el="grpCtx"] .dk-pill');
   if (contextPill.getAttribute('aria-label') !== labels.context) contextPill.setAttribute('aria-label', labels.context);
-  for (const node of [contextPill, ...contextPill.querySelectorAll('[title]')]) node.removeAttribute('title');
   const quotaPill = root.querySelector('[data-el="grpQuota"] .dk-pill');
   if (quotaPill.getAttribute('aria-label') !== labels.quota) quotaPill.setAttribute('aria-label', labels.quota);
 

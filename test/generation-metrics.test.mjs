@@ -57,7 +57,7 @@ test('shared display uses one-decimal uppercase K/M, safe carry, and truthful ou
   const ui = createPresentation();
   for (const [value, expected] of [[0, '0'], [200, '200'], [1000, '1.0K'], [99900, '99.9K'], [99960, '100K'], [128000, '128K'], [255500, '256K'], [512000, '512K'], [999960, '1.0M'], [1200000, '1.2M'], [null, '—']]) assert.equal(ui.formatTokens(value), expected);
   const view = ui.generationText(summarizeGeneration({ output: 1000, reply: 300, thinking: 700, ttft: 5.25, streaming: 1.75 }));
-  assert.equal(view.speed, '142.9 tok/s');
+  assert.equal(view.speed, '*142.9 tok/s'); // 1000 / 1.75 exceeds the stream-rate limit.
   assert.equal(view.output, '1.0K');
   assert.match(view.outputTitle, /300 \+ Thinking 700/);
   assert.match(view.totalTimeTitle, /Request duration 7.0s/);
@@ -67,6 +67,33 @@ test('shared display uses one-decimal uppercase K/M, safe carry, and truthful ou
   assert.match(view.ttftTitle, /First-token wait to total duration/);
   assert.equal('steps' in view, false);
   assert.doesNotMatch(ui.generationMarkup(), /steps|compaction|output|totalTime|generation-heading/);
+});
+
+test('stream fallback marks the total rate and explains the actual denominator', () => {
+  const ui = createPresentation();
+  const view = (output, streaming, ttft = 1) => ui.generationText(summarizeGeneration({ output, ttft, streaming }));
+  for (const [output, streaming, speed] of [[40, 0.5, '80.0'], [50, 0.1, '500.0']]) {
+    const v = view(output, streaming);
+    assert.equal(v.streamSpeed, speed + ' tok/s');
+    assert.match(v.streamSpeedTitle, /^Stream .* = Out .* \/ Stream /);
+    assert.ok(!v.speed.startsWith('*'));
+  }
+  for (const [output, streaming, speed, denominator, reason] of [
+    [10, 0.05, '9.5', '1.05', 'too short (0.05s)'],
+    [40, 0.04, '38.5', '1.04', 'too short (0.04s)'],
+    [40, 0, '40.0', '1.00', 'too short (0.00s)'],
+    [51, 0.1, '46.4', '1.10', 'exceeds 500 tok/s'],
+  ]) {
+    const v = view(output, streaming);
+    assert.equal(v.streamSpeed, '*' + speed + ' tok/s');
+    assert.equal(v.speed, v.streamSpeed);
+    assert.ok(v.streamSpeedTitle.includes(reason));
+    assert.ok(v.streamSpeedTitle.endsWith(output + ' / ' + denominator + 's = ' + v.streamSpeed));
+    assert.equal(v.speedTitle, v.streamSpeedTitle);
+  }
+  const noDuration = view(40, 0, 0);
+  assert.equal(noDuration.streamSpeed, '—');
+  assert.doesNotMatch(noDuration.streamSpeedTitle, /\//);
 });
 
 test('request associations decode both packed and unpacked generated step indices', () => {

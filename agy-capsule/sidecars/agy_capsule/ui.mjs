@@ -230,14 +230,41 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       ctxIconColor: '',
     };
   }
-  function contextTooltips(data = {}, t = dictionaries.en) {
-    const context = data.contextTokens || 0;
-    const limit = data.maxContextTokens || 0;
+  function contextBreakdown(data = {}) {
+    const maxCtx = data.maxContextTokens || 0;
+    const ctx = data.contextTokens || 0;
     const cached = data.cachedIn || 0;
-    const turn0 = data.turn0Tokens || 0;
-    const write = data.totalOutputTokens || 0;
+    const out = data.totalOutputTokens || 0;
     const think = data.totalThinkingTokens || 0;
-    const read = Math.max(0, context - turn0 - write - think);
+    const turn0 = data.turn0Tokens || 0;
+    const read = Math.max(0, ctx - turn0 - out - think);
+    const hasMax = maxCtx > 0;
+    const usedPctNum = hasMax ? Math.round((ctx / maxCtx) * 100) : 0;
+    const usedPctExact = hasMax ? Math.min(100, (ctx / maxCtx) * 100) : 0;
+    const compSum = read + out + think + turn0;
+    const scale = compSum > 0 ? usedPctExact / compSum : 0;
+    const pctStr = (val) => (hasMax ? Math.round((val / maxCtx) * 100) + '%' : (ctx === 0 ? '0%' : '--%'));
+    const usedPct = hasMax ? usedPctNum + '%' : (ctx === 0 ? '0%' : '--%');
+    return {
+      ctx, maxCtx, cached, turn0, read, think, out,
+      usedPct,
+      usedFrac: formatTokens(ctx) + ' / ' + (hasMax ? formatTokens(maxCtx) : '--'),
+      segTurn0W: (turn0 * scale).toFixed(2) + '%',
+      segReadW: (read * scale).toFixed(2) + '%',
+      segThinkW: (think * scale).toFixed(2) + '%',
+      segOutW: (out * scale).toFixed(2) + '%',
+      turn0Pct: pctStr(turn0),
+      readPct: pctStr(read),
+      thinkPct: pctStr(think),
+      outPct: pctStr(out),
+      turn0K: formatTokens(turn0),
+      readK: formatTokens(read),
+      thinkK: formatTokens(think),
+      outK: formatTokens(out),
+    };
+  }
+  function contextTooltips(data = {}, t = dictionaries.en) {
+    const { ctx: context, maxCtx: limit, cached, turn0, read, think, out: write } = contextBreakdown(data);
     const row = (key, value) => `${t[key]}: ${formatTokens(value)} tokens${limit > 0 ? ` · ${t.ofLimit.replace('{pct}', Math.round(value / limit * 100) + '%')}` : ''}\n${t[key + 'Tip']}`;
     return {
       overview: `${t.contextScope}\n${t.contextUsed} ${formatTokens(context)} / ${t.contextLimit} ${limit > 0 ? formatTokens(limit) : '—'} · ${t.contextRemaining} ${limit > 0 ? formatTokens(Math.max(0, limit - context)) : '—'}\n${t.cachedInput} ${formatTokens(cached)} · ${t.uncachedInput} ${formatTokens(data.uncachedIn ?? Math.max(0, context - cached))}`,
@@ -257,6 +284,82 @@ export function createPresentation(turnFactory = createTurnPresentation) {
   }
   function applyQuotaTooltips(root, t) {
     for (const row of root.querySelectorAll('[data-quota-tooltip]')) row.title = quotaTooltip(JSON.parse(row.dataset.quotaTooltip), t);
+  }
+  function quotaColor(frac) {
+    const clamped = Math.max(0, Math.min(1, Number(frac || 0)));
+    const pctLeft = Math.round(clamped * 100);
+    return pctLeft <= 10 ? '#ef4444' : pctLeft <= 25 ? '#f59e0b' : '#4ea84e';
+  }
+  function makeRingSvg(frac, size = 16) {
+    const clamped = Math.max(0, Math.min(1, Number(frac || 0)));
+    const r = 6.5;
+    const c = 2 * Math.PI * r;
+    const offset = c * (1 - clamped);
+    const color = quotaColor(clamped);
+    return (
+      '<svg width="' + size + '" height="' + size + '" viewBox="0 0 18 18" style="transform: rotate(-90deg); flex-shrink: 0;">' +
+      '<circle cx="9" cy="9" r="' + r + '" fill="none" stroke="rgba(142,142,147,0.28)" stroke-width="2.2"/>' +
+      '<circle cx="9" cy="9" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '"/>' +
+      '</svg>'
+    );
+  }
+  function formatGroupTitle(raw) {
+    const s = String(raw || '').trim();
+    if (s === 'Gemini Models') return 'Gemini';
+    if (s.toLowerCase().startsWith('claude')) return 'Claude';
+    return s;
+  }
+  function formatBucketLabel(bucket = {}, t = dictionaries.en) {
+    if (bucket.window === 'weekly') return t.weekly;
+    if (bucket.window === '5h') return t.fiveHours;
+    return String(bucket.displayName || bucket.window || '')
+      .replace(/\s*limit\b/gi, '')
+      .replace(/\b5h(?:ours)?\b/gi, '5 Hours')
+      .trim();
+  }
+  function activeGroupColor(group = {}) {
+    // Weekly exhaustion overrides 5h; zero is not a missing window.
+    const knownBuckets = (group.buckets || []).filter(b => Number.isFinite(b.remainingFraction));
+    const weeklyBucket = knownBuckets.find(b => b.window === 'weekly');
+    const activeBucket = knownBuckets.find(b => b.window === '5h') || weeklyBucket;
+    const activeFraction = weeklyBucket && Math.round(weeklyBucket.remainingFraction * 100) <= 0 ? 0 : activeBucket?.remainingFraction;
+    return activeBucket ? quotaColor(activeFraction) : 'var(--muted-foreground, #8e8e93)';
+  }
+  function quotaView(groups = [], prefs = {}, t = dictionaries.en, now = Date.now()) {
+    if (!Array.isArray(groups) || groups.length === 0) return [];
+    const windowOrder = { '5h': 0, weekly: 1 };
+    return groups.map(g => {
+      const rawName = String(g.displayName || '').trim().toLowerCase();
+      const title = formatGroupTitle(g.displayName);
+      const descMatch = String(g.description || '').match(/models within this group:\s*([^\n.]+)/i);
+      const modelsInGroup = descMatch ? descMatch[1].toLowerCase() : '';
+      let q5h = '--%';
+      let qWk = '--%';
+      const sorted = [...(g.buckets || [])].sort(
+        (a, b) => (windowOrder[a.window] ?? 2) - (windowOrder[b.window] ?? 2)
+      );
+      const buckets = sorted.map(b => {
+        const label = formatBucketLabel(b, t);
+        const labelKey = b.window === 'weekly' ? 'weekly' : b.window === '5h' ? 'fiveHours' : '';
+        const resetShort = formatReset(b.resetTime, prefs, now);
+        const pctLeft = Math.round((b.remainingFraction || 0) * 100);
+        if (b.window === '5h') q5h = pctLeft + '%';
+        if (b.window === 'weekly') qWk = pctLeft + '%';
+        return {
+          window: b.window,
+          remainingFraction: b.remainingFraction,
+          label,
+          labelKey,
+          resetShort,
+          pctLeft,
+          barWidth: Math.max(0, Math.min(100, pctLeft)),
+          color: quotaColor(pctLeft / 100),
+          tooltip: { pool: title, window: b.window, displayName: b.displayName, remainingFraction: b.remainingFraction, resetTime: b.resetTime },
+        };
+      });
+      return { title, rawName, modelsInGroup, activeColor: activeGroupColor(g), q5h, qWk, buckets };
+    });
   }
   function alertView(data = {}, prefs = {}, t = dictionaries.en) {
     const kind = data.requestError?.kind || 'none';
@@ -383,7 +486,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     return t;
   }
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  return { version: 61, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens, cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
+  return { version: 62, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens, cacheTooltip, cacheView, contextBreakdown, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, quotaColor, makeRingSvg, formatGroupTitle, formatBucketLabel, activeGroupColor, quotaView, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
 }
 
-export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 61) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;
+export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 62) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;

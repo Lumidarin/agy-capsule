@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { createPresentation, getPresentationScript } from './ui.mjs';
 
-const { escapeHtml, formatTokens, appearance, formatReset, cacheView } = createPresentation();
+const { escapeHtml, appearance, cacheView, contextBreakdown, quotaView, makeRingSvg } = createPresentation();
 
 const INTERVAL_MS = 1000;
 const INSTANCE_TS = Date.now();
@@ -1216,124 +1216,29 @@ function pageMount(d) {
   return 'ok:' + modelText;
 }
 
-function fmtK(n) {
-  return formatTokens(n);
-}
-
-function fmtColK(n) {
-  return formatTokens(n);
-}
-
-function quotaColor(frac) {
-  const clamped = Math.max(0, Math.min(1, Number(frac || 0)));
-  const pctLeft = Math.round(clamped * 100);
-  return pctLeft <= 10 ? '#ef4444' : pctLeft <= 25 ? '#f59e0b' : '#4ea84e';
-}
-
-function makeRingSvg(frac) {
-  const clamped = Math.max(0, Math.min(1, Number(frac || 0)));
-  const r = 6.5;
-  const c = 2 * Math.PI * r;
-  const offset = c * (1 - clamped);
-  const color = quotaColor(clamped);
-  return (
-    '<svg width="16" height="16" viewBox="0 0 18 18" style="transform: rotate(-90deg); flex-shrink: 0;">' +
-    '<circle cx="9" cy="9" r="' + r + '" fill="none" stroke="rgba(142,142,147,0.28)" stroke-width="2.2"/>' +
-    '<circle cx="9" cy="9" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="2.2" stroke-linecap="round" ' +
-    'stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '"/>' +
-    '</svg>'
-  );
-}
-
-function formatGroupTitle(raw) {
-  const s = String(raw || '').trim();
-  if (s === 'Gemini Models') return 'Gemini';
-  if (s.toLowerCase().startsWith('claude')) return 'Claude';
-  return s;
-}
-
 function toView(d) {
-  const maxCtx = d.maxContextTokens || 0;
-  const ctx = d.contextTokens || 0;
-  const cached = d.cachedIn || 0;
-  const out = d.totalOutputTokens || 0;
-  const think = d.totalThinkingTokens || 0;
-  const turn0 = d.turn0Tokens || 0;
-  const read = Math.max(0, ctx - turn0 - out - think);
-
-  const hasMax = maxCtx > 0;
-  const usedPctRound = hasMax ? Math.round((ctx / maxCtx) * 100) : 0;
-  const usedPctExact = hasMax ? Math.min(100, (ctx / maxCtx) * 100) : 0;
-  const compSum = read + out + think + turn0;
-  const scale = compSum > 0 ? usedPctExact / compSum : 0;
-
-  const segReadW = (read * scale).toFixed(2) + '%';
-  const segOutW = (out * scale).toFixed(2) + '%';
-  const segThinkW = (think * scale).toFixed(2) + '%';
-  const segTurn0W = (turn0 * scale).toFixed(2) + '%';
-
-  const pctStr = (val) => (hasMax ? Math.round((val / maxCtx) * 100) + '%' : (ctx === 0 ? '0%' : '--%'));
-  const readPct = pctStr(read);
-  const outPct = pctStr(out);
-  const thinkPct = pctStr(think);
-  const turn0Pct = pctStr(turn0);
+  const ctx = contextBreakdown(d);
   const cache = cacheView(d, d.prefs);
   const { iconSvg: cacheIconSvg, valColor: cacheValColor, valDeco: cacheValDeco, valOp: cacheValOp, text: valCacheHit, countdown: valCacheHitK, ctxIconColor } = cache;
 
-  const quotaSummaryGroups = [];
+  const quotaGroups = quotaView(d.quotaGroups, d.prefs);
+  const quotaSummaryGroups = quotaGroups.map(({ title, rawName, modelsInGroup, q5h, qWk }) => ({ title, rawName, modelsInGroup, q5h, qWk }));
+  const useBar = appearance(d.prefs).quotaIndicator === 'bar';
   let quotaHtml = '<div class="dk-panel-content">';
-  const windowOrder = { '5h': 0, weekly: 1 };
-  for (const g of d.quotaGroups || []) {
-    const rawName = String(g.displayName || '').trim().toLowerCase();
-    const title = formatGroupTitle(g.displayName);
-    const descMatch = String(g.description || '').match(/models within this group:\s*([^\n.]+)/i);
-    const modelsInGroup = descMatch ? descMatch[1].toLowerCase() : '';
-    let q5h = '--%';
-    let qWk = '--%';
-
-    // Weekly exhaustion overrides 5h; zero is not a missing window.
-    const knownBuckets = (g.buckets || []).filter(b => Number.isFinite(b.remainingFraction));
-    const weeklyBucket = knownBuckets.find(b => b.window === 'weekly');
-    const activeBucket = knownBuckets.find(b => b.window === '5h') || weeklyBucket;
-    const activeFraction = weeklyBucket && Math.round(weeklyBucket.remainingFraction * 100) <= 0 ? 0 : activeBucket?.remainingFraction;
-    const activeColor = activeBucket
-      ? quotaColor(activeFraction)
-      : 'var(--muted-foreground, #8e8e93)';
-    quotaHtml += '<div class="dk-q-group" data-pool="' + escapeHtml(rawName) + '">';
-    quotaHtml += '<div class="dk-q-title">' + escapeHtml(title) + '<span class="dk-q-active" style="color:' + activeColor + '" aria-hidden="true"></span></div>';
-    const buckets = [...(g.buckets || [])].sort(
-      (a, b) => (windowOrder[a.window] ?? 2) - (windowOrder[b.window] ?? 2)
-    );
-    for (const b of buckets) {
-      const baseLabel =
-        b.window === 'weekly'
-          ? 'Weekly'
-          : b.window === '5h'
-            ? '5 Hours'
-            : String(b.displayName || b.window || '')
-                .replace(/\s*limit\b/gi, '')
-                .replace(/\b5h(?:ours)?\b/gi, '5 Hours')
-                .trim();
-      const resetShort = formatReset(b.resetTime, d.prefs);
-      const pctLeft = Math.round((b.remainingFraction || 0) * 100);
-      const pctStr = pctLeft + '%';
-
-      if (b.window === '5h') q5h = pctStr;
-      if (b.window === 'weekly') qWk = pctStr;
-
-      quotaHtml += '<div class="dk-q-row" data-quota-tooltip="' + escapeHtml(JSON.stringify({ pool: title, window: b.window, displayName: b.displayName, remainingFraction: b.remainingFraction, resetTime: b.resetTime })) + '">';
-      const labelKey = b.window === 'weekly' ? 'weekly' : b.window === '5h' ? 'fiveHours' : '';
-      const color = quotaColor(pctLeft / 100);
-      const indicator = appearance(d.prefs).quotaIndicator === 'bar'
-        ? '<span class="dk-q-meter"><span style="width:' + Math.max(0, Math.min(100, pctLeft)) + '%;background:' + color + '"></span></span>'
+  for (const g of quotaGroups) {
+    quotaHtml += '<div class="dk-q-group" data-pool="' + escapeHtml(g.rawName) + '">';
+    quotaHtml += '<div class="dk-q-title">' + escapeHtml(g.title) + '<span class="dk-q-active" style="color:' + g.activeColor + '" aria-hidden="true"></span></div>';
+    for (const b of g.buckets) {
+      quotaHtml += '<div class="dk-q-row" data-quota-tooltip="' + escapeHtml(JSON.stringify(b.tooltip)) + '">';
+      const indicator = useBar
+        ? '<span class="dk-q-meter"><span style="width:' + b.barWidth + '%;background:' + b.color + '"></span></span>'
         : makeRingSvg(b.remainingFraction);
-      quotaHtml += '  <span class="dk-q-label"' + (labelKey ? ' data-i18n="' + labelKey + '"' : '') + '>' + escapeHtml(baseLabel) + '</span>';
-      quotaHtml += '  <span class="dk-q-right"><span class="dk-q-pct notranslate" translate="no">' + pctLeft + '%</span>' + indicator + '</span>';
-      quotaHtml += '  <span class="dk-q-mid notranslate" translate="no">' + escapeHtml(resetShort) + '</span>';
+      quotaHtml += '  <span class="dk-q-label"' + (b.labelKey ? ' data-i18n="' + b.labelKey + '"' : '') + '>' + escapeHtml(b.label) + '</span>';
+      quotaHtml += '  <span class="dk-q-right"><span class="dk-q-pct notranslate" translate="no">' + b.pctLeft + '%</span>' + indicator + '</span>';
+      quotaHtml += '  <span class="dk-q-mid notranslate" translate="no">' + escapeHtml(b.resetShort) + '</span>';
       quotaHtml += '</div>';
     }
     quotaHtml += '</div>';
-    quotaSummaryGroups.push({ title, rawName, modelsInGroup, q5h, qWk });
   }
 
   quotaHtml += '</div>';
@@ -1344,34 +1249,34 @@ function toView(d) {
     turnMetrics: d.turnMetrics || null,
     requestError: d.requestError || { kind: 'none' },
     cloudPaygo: d.cloudPaygo === true,
-    cache: { contextTokens: ctx, cachedIn: cached, lastStepEpochMs: d.lastStepEpochMs || 0 },
-    contextData: { contextTokens: ctx, maxContextTokens: maxCtx, cachedIn: cached, uncachedIn: d.uncachedIn, turn0Tokens: turn0, totalOutputTokens: out, totalThinkingTokens: think },
-    pillCtx: hasMax ? usedPctRound + '%' : (ctx === 0 ? '0%' : '--%'),
+    cache: { contextTokens: ctx.ctx, cachedIn: ctx.cached, lastStepEpochMs: d.lastStepEpochMs || 0 },
+    contextData: { contextTokens: ctx.ctx, maxContextTokens: ctx.maxCtx, cachedIn: ctx.cached, uncachedIn: d.uncachedIn, turn0Tokens: ctx.turn0, totalOutputTokens: ctx.out, totalThinkingTokens: ctx.think },
+    pillCtx: ctx.usedPct,
     ctxIconColor,
-    usedPctText: hasMax ? usedPctRound + '% used' : (ctx === 0 ? '0% used' : '--% used'),
-    usedFrac: fmtK(ctx) + ' / ' + (hasMax ? fmtK(maxCtx) : '--'),
-    segReadW,
-    segOutW,
-    segThinkW,
-    segTurn0W,
+    usedPctText: ctx.usedPct + ' used',
+    usedFrac: ctx.usedFrac,
+    segReadW: ctx.segReadW,
+    segOutW: ctx.segOutW,
+    segThinkW: ctx.segThinkW,
+    segTurn0W: ctx.segTurn0W,
     cacheIconSvg,
     cacheValColor,
     cacheValDeco,
     cacheValOp,
     valCacheHit,
     valCacheHitK,
-    valTurn0Pct: turn0Pct,
-    valTurn0K: fmtColK(turn0),
-    valReadPct: readPct,
-    valReadK: fmtColK(read),
-    valThinkPct: thinkPct,
-    valThinkK: fmtColK(think),
-    valOutPct: outPct,
-    valOutK: fmtColK(out),
-    valRead: readPct + ' · ' + fmtK(read),
-    valOut: outPct + ' · ' + fmtK(out),
-    valThink: thinkPct + ' · ' + fmtK(think),
-    valTurn0: turn0Pct + ' · ' + fmtK(turn0),
+    valTurn0Pct: ctx.turn0Pct,
+    valTurn0K: ctx.turn0K,
+    valReadPct: ctx.readPct,
+    valReadK: ctx.readK,
+    valThinkPct: ctx.thinkPct,
+    valThinkK: ctx.thinkK,
+    valOutPct: ctx.outPct,
+    valOutK: ctx.outK,
+    valRead: ctx.readPct + ' · ' + ctx.readK,
+    valOut: ctx.outPct + ' · ' + ctx.outK,
+    valThink: ctx.thinkPct + ' · ' + ctx.thinkK,
+    valTurn0: ctx.turn0Pct + ' · ' + ctx.turn0K,
     quotaSummaryGroups,
     quotaHtml,
     instanceTs: INSTANCE_TS,
@@ -1430,10 +1335,10 @@ function installRuntime(owner, hash) {
 }
 
 export function buildRuntimeBundle(owner = INSTANCE_TS) {
-  const functions = [fmtK, fmtColK, quotaColor, makeRingSvg, formatGroupTitle, toView, findFooterLeft, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
+  const functions = [toView, findFooterLeft, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
   const source = getPresentationScript() + '\n' + functions;
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
-  const code = `(()=>{const INSTANCE_TS=${Number(owner)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${getPresentationScript()}\nconst {escapeHtml,formatTokens,appearance,formatReset,cacheView}=globalThis.__agyCapsulePresentation;\n${functions}\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;
+  const code = `(()=>{const INSTANCE_TS=${Number(owner)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${getPresentationScript()}\nconst {escapeHtml,appearance,cacheView,contextBreakdown,quotaView,makeRingSvg}=globalThis.__agyCapsulePresentation;\n${functions}\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;
   return { code, hash };
 }
 

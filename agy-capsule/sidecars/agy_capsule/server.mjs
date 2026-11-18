@@ -1442,72 +1442,27 @@ const UI_HTML = `<!DOCTYPE html>
         if (prefs[key] !== value) void saveSettings({ [key]: value });
       });
     }
-    function fmtK(n) {
-      return presentation.formatTokens(n);
-    }
-
-    function fmtColK(n) {
-      return presentation.formatTokens(n);
-    }
-
-    function makeRingSvg(frac) {
-      const clamped = Math.max(0, Math.min(1, Number(frac || 0)));
-      const r = 6.5;
-      const c = 2 * Math.PI * r;
-      const offset = c * (1 - clamped);
-      const pctLeft = Math.round(clamped * 100);
-      const color = pctLeft <= 10 ? '#ef4444' : (pctLeft <= 25 ? '#f59e0b' : '#4ea84e');
-      return (
-        '<svg width="18" height="18" viewBox="0 0 18 18" style="transform: rotate(-90deg); flex-shrink: 0;">' +
-        '<circle cx="9" cy="9" r="' + r + '" fill="none" stroke="rgba(142,142,147,0.28)" stroke-width="2.2"/>' +
-        '<circle cx="9" cy="9" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="2.2" stroke-linecap="round" ' +
-        'stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '"/>' +
-        '</svg>'
-      );
-    }
-
-    function formatGroupTitle(raw) {
-      const s = String(raw || '').trim();
-      if (s === 'Gemini Models') return 'Gemini';
-      if (s.toLowerCase().startsWith('claude')) return 'Claude';
-      return s;
-    }
-
     function renderQuota(groups) {
       const root = document.getElementById('quota-root');
-      if (!Array.isArray(groups) || groups.length === 0) {
+      const quotaGroups = presentation.quotaView(groups, prefs, labels);
+      if (quotaGroups.length === 0) {
         root.replaceChildren();
         return;
       }
+      const useBar = presentation.appearance(prefs).quotaIndicator === 'bar';
       let html = '';
-      const windowOrder = { '5h': 0, weekly: 1 };
-      for (const g of groups) {
+      for (const g of quotaGroups) {
         html += '<div class="quota-group">';
-        html += '<div class="quota-group-title">' + presentation.escapeHtml(formatGroupTitle(g.displayName)) + '</div>';
-        const buckets = [...(g.buckets || [])].sort(
-          (a, b) => (windowOrder[a.window] ?? 2) - (windowOrder[b.window] ?? 2)
-        );
-        for (const b of buckets) {
-          const baseLabel =
-            b.window === 'weekly'
-              ? labels.weekly
-              : b.window === '5h'
-                ? labels.fiveHours
-                : String(b.displayName || b.window || '')
-                    .replace(/\\s*limit\\b/gi, '')
-                    .replace(/\\b5h(?:ours)?\\b/gi, '5 Hours')
-                    .trim();
-          const resetShort = presentation.formatReset(b.resetTime, prefs);
-          const pctLeft = Math.round((b.remainingFraction || 0) * 100);
+        html += '<div class="quota-group-title">' + presentation.escapeHtml(g.title) + '</div>';
+        for (const b of g.buckets) {
           html += '<div class="quota-bucket">';
-          html += '  <div class="quota-line1" data-quota-tooltip="' + presentation.escapeHtml(JSON.stringify({ pool: formatGroupTitle(g.displayName), window: b.window, displayName: b.displayName, remainingFraction: b.remainingFraction, resetTime: b.resetTime })) + '">';
-          const color = pctLeft <= 10 ? '#ef4444' : pctLeft <= 25 ? '#f59e0b' : '#4ea84e';
-          const indicator = presentation.appearance(prefs).quotaIndicator === 'bar'
-            ? '<span class="quota-meter"><span style="width:' + Math.max(0, Math.min(100, pctLeft)) + '%;background:' + color + '"></span></span>'
-            : makeRingSvg(b.remainingFraction);
-          html += '    <span class="quota-label">' + presentation.escapeHtml(baseLabel) + '</span>';
-          html += '    <span class="quota-right"><span class="notranslate" translate="no">' + pctLeft + '%</span>' + indicator + '</span>';
-          html += '    <span class="quota-mid notranslate" translate="no">' + presentation.escapeHtml(resetShort) + '</span>';
+          html += '  <div class="quota-line1" data-quota-tooltip="' + presentation.escapeHtml(JSON.stringify(b.tooltip)) + '">';
+          const indicator = useBar
+            ? '<span class="quota-meter"><span style="width:' + b.barWidth + '%;background:' + b.color + '"></span></span>'
+            : presentation.makeRingSvg(b.remainingFraction, 18);
+          html += '    <span class="quota-label">' + presentation.escapeHtml(b.label) + '</span>';
+          html += '    <span class="quota-right"><span class="notranslate" translate="no">' + b.pctLeft + '%</span>' + indicator + '</span>';
+          html += '    <span class="quota-mid notranslate" translate="no">' + presentation.escapeHtml(b.resetShort) + '</span>';
           html += '  </div>';
           html += '</div>';
         }
@@ -1548,36 +1503,16 @@ const UI_HTML = `<!DOCTYPE html>
         presentation.renderAlerts(document.body, d, prefs, labels);
         presentation.renderGeneration(document.querySelector('.panel'), d.generation, labels, prefs);
         presentation.renderTurnMetrics(document.querySelector('.panel'), d.turnMetrics, labels, prefs);
-        const maxCtx = d.maxContextTokens || 0;
-        const ctx = d.contextTokens || 0;
-        const cached = d.cachedIn || 0;
-        const out = d.totalOutputTokens || 0;
-        const think = d.totalThinkingTokens || 0;
-        const turn0 = d.turn0Tokens || 0;
-        const read = Math.max(0, ctx - turn0 - out - think);
+        const ctx = presentation.contextBreakdown(d);
 
-        const hasMax = maxCtx > 0;
-        const usedPct = hasMax ? Math.round((ctx / maxCtx) * 100) : 0;
-        const usedPctExact = hasMax ? Math.min(100, (ctx / maxCtx) * 100) : 0;
-        const compSum = read + out + think + turn0;
-        const scale = compSum > 0 ? usedPctExact / compSum : 0;
-
-        const pctStr = (val) => (hasMax ? Math.round((val / maxCtx) * 100) + '%' : (ctx === 0 ? '0%' : '--%'));
-        const readPct = pctStr(read);
-        const outPct = pctStr(out);
-        const thinkPct = pctStr(think);
-        const turn0Pct = pctStr(turn0);
-
-        const usedPctEl = document.getElementById('used-pct');
-        usedPctEl.textContent = (hasMax ? usedPct : ctx === 0 ? '0' : '--') + '%';
-
-        document.getElementById('used-fraction').textContent = fmtK(ctx) + ' / ' + (hasMax ? fmtK(maxCtx) : '--');
+        document.getElementById('used-pct').textContent = ctx.usedPct;
+        document.getElementById('used-fraction').textContent = ctx.usedFrac;
 
         const dotCachedEl = document.getElementById('dot-cached');
-        document.getElementById('seg-read').style.width = (read * scale).toFixed(2) + '%';
-        document.getElementById('seg-out').style.width = (out * scale).toFixed(2) + '%';
-        document.getElementById('seg-think').style.width = (think * scale).toFixed(2) + '%';
-        document.getElementById('seg-turn0').style.width = (turn0 * scale).toFixed(2) + '%';
+        document.getElementById('seg-read').style.width = ctx.segReadW;
+        document.getElementById('seg-out').style.width = ctx.segOutW;
+        document.getElementById('seg-think').style.width = ctx.segThinkW;
+        document.getElementById('seg-turn0').style.width = ctx.segTurn0W;
 
         const cache = presentation.cacheView(d, prefs);
         const valCacheHitEl = document.getElementById('val-cache-hit');
@@ -1593,14 +1528,14 @@ const UI_HTML = `<!DOCTYPE html>
         }
         document.getElementById('row-cached').title = presentation.cacheTooltip(d, labels, Date.now(), prefs);
 
-        document.getElementById('val-turn0-k').textContent = fmtColK(turn0);
-        document.getElementById('val-read-k').textContent = fmtColK(read);
-        document.getElementById('val-think-k').textContent = fmtColK(think);
-        document.getElementById('val-out-k').textContent = fmtColK(out);
-        document.getElementById('val-turn0-pct').textContent = turn0Pct;
-        document.getElementById('val-read-pct').textContent = readPct;
-        document.getElementById('val-think-pct').textContent = thinkPct;
-        document.getElementById('val-out-pct').textContent = outPct;
+        document.getElementById('val-turn0-k').textContent = ctx.turn0K;
+        document.getElementById('val-read-k').textContent = ctx.readK;
+        document.getElementById('val-think-k').textContent = ctx.thinkK;
+        document.getElementById('val-out-k').textContent = ctx.outK;
+        document.getElementById('val-turn0-pct').textContent = ctx.turn0Pct;
+        document.getElementById('val-read-pct').textContent = ctx.readPct;
+        document.getElementById('val-think-pct').textContent = ctx.thinkPct;
+        document.getElementById('val-out-pct').textContent = ctx.outPct;
 
         renderQuota(d.quotaGroups);
         renderCdpNotice();

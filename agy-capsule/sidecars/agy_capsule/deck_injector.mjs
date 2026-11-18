@@ -5,8 +5,12 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { createPresentation, getPresentationScript } from './ui.mjs';
+import { DECK_SKIN_CSS } from './ui_skins.mjs';
 
-const { escapeHtml, formatTokens, appearance, formatReset, cacheView } = createPresentation();
+const {
+  escapeHtml, appearance, formatReset, cacheView,
+  quotaColor, makeRingSvg, formatGroupTitle, formatBucketLabel, activeGroupColor, contextBreakdown,
+} = createPresentation();
 
 const INTERVAL_MS = 1000;
 const INSTANCE_TS = Date.now();
@@ -16,6 +20,52 @@ const PORT_FILE =
     : process.platform === 'win32'
       ? join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'Antigravity', 'DevToolsActivePort')
       : join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'Antigravity', 'DevToolsActivePort');
+
+function detectHostTheme() {
+  try {
+    const body = document.body;
+    const doc = document.documentElement;
+    const hasCls = (el, ...names) => names.some(n => el?.classList?.contains(n));
+    if (hasCls(body, 'theme-light', 'light', 'vscode-light') || hasCls(doc, 'theme-light', 'light', 'vscode-light')) return 'light';
+    if (hasCls(body, 'theme-dark', 'dark', 'vscode-dark') || hasCls(doc, 'theme-dark', 'dark', 'vscode-dark')) return 'dark';
+    const parseLum = (str) => {
+      if (!str || typeof str !== 'string') return null;
+      const s = str.trim();
+      if (!s || /^transparent$/i.test(s)) return null;
+      const hex = s.replace(/^#/, '');
+      if (/^[0-9a-fA-F]{3,4}$/.test(hex)) {
+        if (hex.length === 4 && parseInt(hex[3] + hex[3], 16) === 0) return null;
+        const r = parseInt(hex[0] + hex[0], 16);
+        const g = parseInt(hex[1] + hex[1], 16);
+        const b = parseInt(hex[2] + hex[2], 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      }
+      if (/^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(hex)) {
+        if (hex.length === 8 && parseInt(hex.slice(6, 8), 16) === 0) return null;
+        const n = parseInt(hex.slice(0, 6), 16);
+        return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+      }
+      const rgb = s.match(/^rgba?\(\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*[, ]\s*([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/i);
+      if (!rgb) return null;
+      if (rgb[4] !== undefined && parseFloat(rgb[4]) === 0) return null;
+      return (0.299 * Number(rgb[1]) + 0.587 * Number(rgb[2]) + 0.114 * Number(rgb[3])) / 255;
+    };
+    if (typeof getComputedStyle === 'function') {
+      for (const el of [body, doc]) {
+        if (!el) continue;
+        const cs = getComputedStyle(el);
+        if (cs.colorScheme === 'light') return 'light';
+        if (cs.colorScheme === 'dark') return 'dark';
+        for (const candidate of [cs.getPropertyValue('--background'), cs.backgroundColor]) {
+          const lum = parseLum(candidate);
+          if (lum !== null) return lum >= 0.5 ? 'light' : 'dark';
+        }
+      }
+    }
+    if (typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches) return 'light';
+  } catch {}
+  return 'dark';
+}
 
 // Self-contained function executed inside the Antigravity renderer page.
 function pageMount(d) {
@@ -67,28 +117,27 @@ function pageMount(d) {
   }
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '107') {
+  if (root.getAttribute('data-deck-ver') !== '108') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '107');
+    root.setAttribute('data-deck-ver', '108');
     root._speedActivity = null;
     root._motionPrev = null;
     root.style.cssText = [
       'display: inline-flex',
       'align-items: center',
       'flex-shrink: 0',
-      'gap: 0px',
+      'gap: 2px',
       'margin-left: 6px',
       'margin-right: 6px',
-      'font-size: 12.5px',
+      'font-size: 12px',
       // Match the promo's Source Han faces, with local-only cross-platform fallbacks.
-      'font-family: "Source Han Sans CN", "思源黑体 CN", "Source Han Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif',
+      'font-family: "Source Han Sans CN", "思源黑体 CN", "Source Han Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang TC", "PingFang SC", system-ui, Arial, sans-serif',
       'font-weight: 400',
       'font-variation-settings: normal',
       'font-variant-ligatures: normal',
       'line-height: normal',
-      'color: var(--secondary-foreground, var(--foreground, #3f3f46))',
       'user-select: none',
       'position: relative',
       '-webkit-font-smoothing: antialiased',
@@ -97,6 +146,11 @@ function pageMount(d) {
     root.innerHTML = `
       <style>
         #deck-metrics-strip, #deck-metrics-strip * { box-sizing: border-box; }
+        ${DECK_SKIN_CSS}
+        #deck-metrics-strip .dk-strip-sep { width: 1px; height: 9px; background: var(--agc-hairline-v); flex-shrink: 0; margin: 0 1px; }
+        #deck-metrics-strip .dk-strip-sep[hidden],
+        #deck-metrics-strip.dk-hide-ctx .dk-strip-sep-quota,
+        #deck-metrics-strip.dk-hide-quota .dk-strip-sep-quota { display: none; }
         #deck-metrics-strip .dk-grp {
           display: inline-flex;
           align-items: center;
@@ -107,234 +161,231 @@ function pageMount(d) {
         }
         #deck-metrics-strip .dk-pill {
           font: inherit;
-          color: inherit;
+          font-size: 12px;
+          line-height: 1.3;
+          color: var(--agc-muted);
           display: inline-flex;
           align-items: center;
-          gap: 5px;
-          padding: 3px 5px;
-          border-radius: 6px;
+          gap: 4px;
+          padding: 2.5px 5px;
+          border-radius: 5.5px;
           cursor: default;
           position: relative;
           background: transparent;
           border: none;
           white-space: nowrap;
-          transition: background 0.12s ease, color 0.12s ease;
+          transition: background 0.14s ease, color 0.14s ease;
         }
-        #deck-metrics-strip .dk-grp:hover .dk-pill,
+        #deck-metrics-strip .dk-grp:hover .dk-pill {
+          background: var(--agc-pill-hover);
+          color: var(--agc-fg-strong);
+        }
         #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-pill {
-          background: var(--secondary, rgba(128, 128, 128, 0.12));
-          color: var(--foreground, #0a0a0c);
+          background: var(--agc-pill-active);
+          color: var(--agc-fg-strong);
+          box-shadow: inset 0 0 0 0.5px var(--agc-card-border);
         }
         #deck-metrics-strip .dk-grp:hover .dk-val,
         #deck-metrics-strip .dk-grp:hover .dk-svg,
         #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-val,
         #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-svg {
-          color: var(--foreground, #0a0a0c);
+          color: var(--agc-fg-strong);
         }
         #deck-metrics-strip .dk-pill-quota {
-          gap: 10px;
+          gap: 7px;
         }
-        #deck-metrics-strip .dk-q-pair[hidden] { display: none; }
+        #deck-metrics-strip .dk-q-pair[hidden],
         #deck-metrics-strip .dk-grp[hidden] { display: none; }
+        #deck-metrics-strip .dk-q-pair[data-tone="warn"],
+        #deck-metrics-strip .dk-q-pair[data-tone="warn"] .dk-val { color: var(--agc-warn); }
+        #deck-metrics-strip .dk-q-pair[data-tone="danger"],
+        #deck-metrics-strip .dk-q-pair[data-tone="danger"] .dk-val { color: var(--agc-danger); }
         #deck-metrics-strip [data-el="grpError"] .dk-pill,
         #deck-metrics-strip [data-el="grpError"] .dk-val,
-        #deck-metrics-strip [data-el="grpError"] .dk-svg { color: #e06c75; }
+        #deck-metrics-strip [data-el="grpError"] .dk-svg { color: var(--agc-danger); }
         #deck-metrics-strip .dk-error-pop { width: 240px; }
-        #deck-metrics-strip .dk-error-heading { font-weight: 600; margin-bottom: 8px; color: var(--foreground, #ddd); }
-        #deck-metrics-strip .dk-error-diagnostic { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border, #444); white-space: pre-wrap; }
+        #deck-metrics-strip .dk-error-head { display: flex; align-items: center; gap: 6px; }
+        #deck-metrics-strip .dk-error-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--agc-danger); box-shadow: inset 0 0.5px 0 var(--agc-dot-rim); flex-shrink: 0; }
+        #deck-metrics-strip .dk-error-heading { font-size: 12px; font-weight: 600; line-height: 1.35; color: var(--agc-danger); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #deck-metrics-strip .dk-error-detail { font-size: 11px; color: var(--agc-fg); line-height: 1.45; }
+        #deck-metrics-strip .dk-error-diagnostic { margin-top: var(--agy-section-gap, 9px); padding-top: var(--agy-section-gap, 9px); border-top: 0.5px solid var(--agc-divider); white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.4; color: var(--agc-muted); }
         #deck-metrics-strip .dk-error-diagnostic:empty { display: none; }
         #deck-metrics-strip.dk-hide-error-label [data-el="grpError"] .dk-val,
         #deck-metrics-strip.dk-hide-ctx [data-el="grpCtx"] { display: none; }
-        #deck-metrics-strip[data-context-tone="warning"] [data-k="pillCtx"] { color: #d4940a !important; }
-        #deck-metrics-strip[data-context-tone="error"] [data-k="pillCtx"] { color: #e06c75 !important; }
-        #deck-metrics-strip .dk-speed { padding-left: 2px; font-variant-numeric: tabular-nums; }
+        #deck-metrics-strip[data-context-tone="warning"] [data-k="pillCtx"] { color: var(--agc-warn) !important; }
+        #deck-metrics-strip[data-context-tone="error"] [data-k="pillCtx"] { color: var(--agc-danger) !important; }
+        #deck-metrics-strip .dk-speed { padding-left: 2px; font-variant-numeric: tabular-nums; font-weight: 500; }
         #deck-metrics-strip .dk-speed-dot { display: none; }
         #deck-metrics-strip .dk-speed[data-motion] { display: inline-flex; align-items: center; gap: 4px; transition: color .35s ease; }
         #deck-metrics-strip .dk-speed[data-motion] .dk-speed-dot { display: inline-block; width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
-        #deck-metrics-strip .dk-speed[data-tier="green"] { color: light-dark(#16a34a, #4ea84e); }
-        #deck-metrics-strip .dk-speed[data-tier="yellow"] { color: light-dark(#d97706, #d4940a); }
-        #deck-metrics-strip .dk-speed[data-tier="red"] { color: light-dark(#dc2626, #e06c75); }
-        #deck-metrics-strip .dk-speed[data-motion="idle"] { color: var(--muted-foreground, #8e8e93); }
+        #deck-metrics-strip .dk-speed[data-tier="green"] { color: var(--agc-good); }
+        #deck-metrics-strip .dk-speed[data-tier="yellow"] { color: var(--agc-warn); }
+        #deck-metrics-strip .dk-speed[data-tier="red"] { color: var(--agc-danger); }
+        #deck-metrics-strip .dk-speed[data-motion="idle"] { color: var(--agc-muted); }
         #deck-metrics-strip .dk-pill:hover .dk-speed[data-motion="idle"],
-        #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-speed[data-motion="idle"] { color: var(--foreground, #ebebeb); }
+        #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-speed[data-motion="idle"] { color: var(--agc-fg-strong); }
         #deck-metrics-strip .dk-speed[data-motion="active"] .dk-speed-dot { animation: dk-speed-breathe 1.2s ease-in-out infinite; }
-        #deck-metrics-strip .dk-speed[data-motion="recent"] .dk-speed-dot { opacity: .9; }
+        #deck-metrics-strip .dk-speed[data-motion="recent"] .dk-speed-dot { opacity: .92; }
         #deck-metrics-strip .dk-speed[data-motion="idle"] .dk-speed-dot { opacity: .48; }
         /* Same motion language as the settings previews: colors ease over .18s. */
         #deck-metrics-strip [data-k="pillCtx"], #deck-metrics-strip [data-el="ctxIconSvg"],
         #deck-metrics-strip .dk-cache-pct, #deck-metrics-strip .dk-cache-k { transition: color .18s ease, opacity .18s ease; }
         @keyframes dk-speed-breathe { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.78); } }
+        @keyframes dk-pop-in { from { opacity: 0; transform: translateY(3px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
         @media (prefers-reduced-motion: reduce) {
-          #deck-metrics-strip .dk-speed[data-motion="active"] .dk-speed-dot { animation: none; }
+          #deck-metrics-strip .dk-speed[data-motion="active"] .dk-speed-dot,
+          #deck-metrics-strip .dk-grp:hover .dk-pop,
+          #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-pop { animation: none; }
           #deck-metrics-strip .dk-speed[data-motion] { transition: none; }
           #deck-metrics-strip [data-k="pillCtx"], #deck-metrics-strip [data-el="ctxIconSvg"],
           #deck-metrics-strip .dk-cache-pct, #deck-metrics-strip .dk-cache-k, #deck-metrics-strip .dk-q-group, #deck-metrics-strip .dk-q-active { transition: none; }
         }
         #deck-metrics-strip .dk-speed[hidden],
         #deck-metrics-strip.dk-hide-speed .dk-speed { display: none; }
-        #deck-metrics-strip .dk-generation { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border, rgba(142,142,147,.24)); font-variant-numeric: tabular-nums; }
-        #deck-metrics-strip .generation-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--agy-row-gap, 5px) 10px; align-items: baseline; }
-        #deck-metrics-strip .generation-row { display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; font-size: 13.5px; font-weight: 400; color: var(--muted-foreground, #8e8e93); }
-        #deck-metrics-strip [data-generation-row="speed"] { justify-self: end; }
-        #deck-metrics-strip .generation-row > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        #deck-metrics-strip .generation-row > :last-child { flex-shrink: 0; white-space: nowrap; font-weight: 500; color: var(--foreground, #18181b); color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent); }
-        #deck-metrics-strip [data-generation-row="timing"] > :last-child { font-weight: 400; color: var(--muted-foreground, #8e8e93); }
-        #deck-metrics-strip .generation-heading { margin-bottom: 8px; font-size: 13.5px; font-weight: 500; color: var(--foreground, #18181b); color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent); }
+        #deck-metrics-strip .dk-generation { margin-top: var(--agy-section-gap, 9px); padding-top: var(--agy-section-gap, 9px); border-top: 0.5px solid var(--agc-divider); font-variant-numeric: tabular-nums; }
         #deck-metrics-strip .generation-row[hidden], #deck-metrics-strip [data-generation-group][hidden] { display: none; }
         #deck-metrics-strip.dk-hide-wk [data-el="pairWk"],
-        #deck-metrics-strip.dk-hide-5h [data-el="pair5h"] {
-          display: none;
-        }
+        #deck-metrics-strip.dk-hide-5h [data-el="pair5h"] { display: none; }
         #deck-metrics-strip.dk-hide-wk .dk-pill-quota,
-        #deck-metrics-strip.dk-hide-5h .dk-pill-quota {
-          gap: 0;
-        }
-        #deck-metrics-strip.dk-hide-qval [data-el="grpQuota"] .dk-val {
-          display: none;
-        }
-        #deck-metrics-strip.dk-hide-qval [data-el="grpQuota"] .dk-q-pair {
-          gap: 0;
-        }
-        #deck-metrics-strip.dk-hide-cval [data-el="grpCtx"] .dk-val {
-          display: none;
-        }
-        #deck-metrics-strip.dk-hide-cval [data-el="grpCtx"] .dk-pill {
-          gap: 0;
-        }
-        #deck-metrics-strip.dk-hide-quota [data-el="grpQuota"] {
-          display: none;
-        }
-        #deck-metrics-strip.dk-hide-all {
-          display: none !important;
-        }
+        #deck-metrics-strip.dk-hide-5h .dk-pill-quota { gap: 0; }
+        #deck-metrics-strip.dk-hide-qval [data-el="grpQuota"] .dk-val { display: none; }
+        #deck-metrics-strip.dk-hide-qval [data-el="grpQuota"] .dk-q-pair { gap: 0; }
+        #deck-metrics-strip.dk-hide-cval [data-el="grpCtx"] .dk-val { display: none; }
+        #deck-metrics-strip.dk-hide-cval [data-el="grpCtx"] .dk-pill { gap: 0; }
+        #deck-metrics-strip.dk-hide-quota [data-el="grpQuota"] { display: none; }
+        #deck-metrics-strip.dk-hide-all { display: none !important; }
         #deck-metrics-strip .dk-q-pair {
           display: inline-flex;
           align-items: center;
-          gap: 5px;
+          gap: 3.5px;
+          transition: color 0.14s ease;
         }
         #deck-metrics-strip .dk-svg {
-          width: 13px;
-          height: 13px;
-          color: var(--muted-foreground, rgba(142, 142, 147, 0.85));
+          width: 12px;
+          height: 12px;
+          color: var(--agc-muted);
           flex-shrink: 0;
-          transition: color 0.12s ease;
+          transition: color 0.14s ease;
         }
         #deck-metrics-strip .dk-val {
           font-weight: 500;
-          color: var(--muted-foreground, #71717a);
+          color: var(--agc-fg);
           font-variant-numeric: tabular-nums;
-          transition: color 0.12s ease;
+          transition: color 0.14s ease;
         }
         #deck-metrics-strip .dk-pop {
           display: none;
           position: absolute;
-          bottom: calc(100% + 8px);
+          bottom: calc(100% + 7px);
           left: 0;
-          background: var(--card, rgba(20, 20, 22, 0.97));
-          backdrop-filter: blur(22px);
-          border: 1px solid var(--border, rgba(128, 128, 128, 0.18));
-          border-radius: 10px;
+          background: linear-gradient(180deg, var(--agc-card-top) 0%, var(--agc-card-bg) 100%);
+          backdrop-filter: blur(40px) saturate(185%);
+          -webkit-backdrop-filter: blur(40px) saturate(185%);
+          border: none;
+          border-radius: 11px;
           padding: var(--agy-pad-y, 10px) var(--agy-pad-x, 12px);
           max-width: var(--dk-pop-max-width, calc(100vw - 16px));
           overflow-wrap: anywhere;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
+          box-shadow: inset 0 0.5px 0 var(--agc-card-rim), 0 0 0 0.5px var(--agc-card-border), var(--agc-card-shadow);
           z-index: 999999;
-          color: var(--muted-foreground, #8e8e93);
-          font-size: 13.5px;
+          color: var(--agc-muted);
+          font-size: 11px;
+          font-variant-numeric: tabular-nums;
           line-height: 1.35;
           pointer-events: none;
+          transform-origin: 18px 100%;
         }
-        #deck-metrics-strip .dk-grp:hover .dk-pop {
-          display: block;
-        }
-        #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-pop { display: block; pointer-events: auto; }
-        #deck-metrics-strip[data-pinned] .dk-grp:not([data-pinned="true"]):hover .dk-pop { display: none; }
-        #deck-metrics-strip .dk-grp[data-dismissed="true"] .dk-pop { display: none; }
-        /* Context Popover (matches plugin UI) */
-        #deck-metrics-strip .dk-ctx-pop {
-          width: 228px;
-        }
-        #deck-metrics-strip .dk-cache-bar {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 12px;
-          font-size: 13.5px;
-          line-height: 1.35;
-          padding-bottom: 5px;
-          margin-bottom: 7.5px;
-          border-bottom: 1px solid var(--border, rgba(142, 142, 147, 0.24));
-        }
-        #deck-metrics-strip .dk-cache-left {
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          font-weight: 500;
-          color: var(--foreground, #18181b);
-          color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent);
-          white-space: nowrap;
-        }
-        #deck-metrics-strip .dk-cache-left > .dk-dot {
-          width: 10px;
+        #deck-metrics-strip .dk-pop::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: -10px;
           height: 10px;
-          flex-shrink: 0;
+          background: transparent;
+          pointer-events: auto;
         }
-        #deck-metrics-strip .dk-cache-pct {
-          margin-left: 0;
-          font-variant-numeric: tabular-nums;
-          font-size: 13.5px;
-          white-space: nowrap;
+        #deck-metrics-strip .dk-grp:hover .dk-pop,
+        #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-pop {
+          display: block;
+          pointer-events: auto;
+          animation: dk-pop-in 0.13s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        #deck-metrics-strip .dk-cache-k {
-          text-align: right;
-          color: var(--muted-foreground, #8e8e93);
-          white-space: nowrap;
-          font-variant-numeric: tabular-nums;
-          font-size: 13.5px;
-          font-weight: 400;
-        }
-        #deck-metrics-strip .dk-cache-k:empty {
-          display: none;
-        }
-        #deck-metrics-strip .dk-summary-row {
+        #deck-metrics-strip[data-pinned] .dk-grp:not([data-pinned="true"]):hover .dk-pop,
+        #deck-metrics-strip .dk-grp[data-dismissed="true"] .dk-pop { display: none; }
+        /* Context Popover */
+        #deck-metrics-strip .dk-ctx-pop { width: 228px; }
+        #deck-metrics-strip .dk-ctx-pop:where(:has(> .dk-panel-content > .dk-foot-grid > [data-generation-block]:not([hidden]))) { width: 232px; }
+        #deck-metrics-strip[data-context-layout="columns"][data-column-percent="true"] .dk-ctx-pop { width: 236px; }
+        #deck-metrics-strip .dk-ctx-pop > .dk-panel-content { display: flex; flex-direction: column; }
+        #deck-metrics-strip[data-request-position="top"] .dk-ctx-pop > .dk-panel-content > .dk-foot-grid { order: -2; }
+        #deck-metrics-strip[data-request-position="top"] .dk-ctx-pop > .dk-panel-content > .dk-divider { order: -1; }
+        #deck-metrics-strip .dk-head-row {
           display: flex;
+          flex-wrap: wrap;
           justify-content: space-between;
           align-items: baseline;
-          gap: 6px;
-          margin-bottom: 6.5px;
+          column-gap: 10px;
+          row-gap: 2px;
+          margin-bottom: var(--agy-section-gap, 9px);
         }
         #deck-metrics-strip .dk-used-pct {
-          font-size: 13.5px;
+          font-size: 12px;
           font-weight: 400;
-          color: var(--muted-foreground, #8e8e93);
+          line-height: 1.35;
+          color: var(--agc-muted);
+          white-space: nowrap;
         }
         #deck-metrics-strip .dk-used-pct > [data-k="usedPctText"] {
-          font-weight: 500;
-          color: var(--foreground, #18181b);
-          color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent);
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--agc-fg-strong);
         }
         #deck-metrics-strip .dk-used-frac {
-          font-size: 13.5px;
-          font-weight: 400;
-          color: var(--muted-foreground, #8e8e93);
+          font-size: 12px;
+          font-weight: 500;
+          line-height: 1.35;
+          color: var(--agc-fg-strong);
           font-variant-numeric: tabular-nums;
+          white-space: nowrap;
         }
         #deck-metrics-strip .dk-track {
           position: relative;
           width: 100%;
           height: 4px;
-          background: rgba(142, 142, 147, 0.24);
-          border-radius: 999px;
+          background: var(--agc-track);
+          box-shadow: inset 0 0 0 0.5px var(--agc-track-ring);
+          border-radius: 99px;
           display: flex;
-          gap: 1.5px;
+          gap: 1px;
           overflow: hidden;
-          margin-bottom: 8.5px;
+          margin-bottom: var(--agy-section-gap, 9px);
         }
         #deck-metrics-strip .dk-seg {
           height: 100%;
-          border-radius: 999px;
-          transition: width 0.25s ease;
+          border-radius: 0;
+          background-image: linear-gradient(180deg, var(--agc-seg-sheen) 0%, transparent 72%);
+          transition: width 0.25s ease, opacity 0.14s ease, filter 0.14s ease;
+          cursor: pointer;
         }
+        #deck-metrics-strip .dk-seg[data-cat="turn0"], #deck-metrics-strip .dk-item-row[data-cat="turn0"] .dk-dot { background-color: var(--agc-c-turn0); }
+        #deck-metrics-strip .dk-seg[data-cat="read"], #deck-metrics-strip .dk-item-row[data-cat="read"] .dk-dot { background-color: var(--agc-c-read); }
+        #deck-metrics-strip .dk-seg[data-cat="think"], #deck-metrics-strip .dk-item-row[data-cat="think"] .dk-dot { background-color: var(--agc-c-think); }
+        #deck-metrics-strip .dk-seg[data-cat="out"], #deck-metrics-strip .dk-item-row[data-cat="out"] .dk-dot { background-color: var(--agc-c-out); }
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat] .dk-seg { opacity: 0.28; }
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat] .dk-item-row { opacity: 0.36; }
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="turn0"] .dk-seg[data-cat="turn0"],
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="read"] .dk-seg[data-cat="read"],
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="think"] .dk-seg[data-cat="think"],
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="out"] .dk-seg[data-cat="out"] { opacity: 1; filter: brightness(1.16); }
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="turn0"] .dk-item-row[data-cat="turn0"],
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="read"] .dk-item-row[data-cat="read"],
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="think"] .dk-item-row[data-cat="think"],
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="out"] .dk-item-row[data-cat="out"] { opacity: 1; background: var(--agc-pill-hover); }
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="turn0"] .dk-item-row[data-cat="turn0"] .dk-item-label,
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="read"] .dk-item-row[data-cat="read"] .dk-item-label,
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="think"] .dk-item-row[data-cat="think"] .dk-item-label,
+        #deck-metrics-strip .dk-ctx-pop[data-hover-cat="out"] .dk-item-row[data-cat="out"] .dk-item-label { color: var(--agc-fg-strong); }
         #deck-metrics-strip .dk-list,
         #deck-metrics-strip .turn-bar-list {
           display: grid;
@@ -353,22 +404,28 @@ function pageMount(d) {
           column-gap: 5px;
           row-gap: 2px;
           min-width: 0;
+          border-radius: 4px;
+          transition: opacity 0.14s ease, background 0.14s ease;
         }
+        #deck-metrics-strip .dk-item-row[data-zero="true"] { opacity: 0.44; }
+        #deck-metrics-strip .dk-item-row[data-zero="true"]:hover { opacity: 0.92; }
         #deck-metrics-strip .dk-item-body {
           display: flex;
           flex-direction: column;
-          gap: 2px;
+          row-gap: 2px;
+          column-gap: 10px;
           min-width: 0;
         }
         #deck-metrics-strip .dk-item-label,
         #deck-metrics-strip .turn-bar-label,
         #deck-metrics-strip .turn-bar-short {
-          color: var(--muted-foreground, #8e8e93);
-          font-size: 13.5px;
-          line-height: 1.25;
+          color: var(--agc-muted);
+          font-size: 11px;
+          line-height: 1.35;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          transition: color 0.14s ease;
         }
         #deck-metrics-strip .turn-bar-item[data-turn-row="requests"] {
           container-type: inline-size;
@@ -394,22 +451,83 @@ function pageMount(d) {
           flex-shrink: 0;
         }
         #deck-metrics-strip .turn-bar-line {
-          background: rgba(142, 142, 147, 0.42);
-          background: color-mix(in srgb, var(--muted-foreground, #8e8e93) 55%, transparent);
+          background: var(--agc-turn-line, color-mix(in srgb, var(--agc-muted) 50%, transparent));
         }
         #deck-metrics-strip .dk-item-row > .dk-dot { grid-row: 1; }
         #deck-metrics-strip .dk-item-k,
         #deck-metrics-strip .dk-item-pct,
         #deck-metrics-strip .turn-bar-val {
           grid-column: 2;
-          color: var(--muted-foreground, #8e8e93);
+          color: var(--agc-fg-strong);
           white-space: nowrap;
           font-variant-numeric: tabular-nums;
-          font-size: 13.5px;
-          font-weight: 400;
-          line-height: 1.25;
+          font-size: 11px;
+          font-weight: 500;
+          line-height: 1.35;
         }
-        /* Quota Popover (matches plugin UI) */
+        #deck-metrics-strip .dk-item-pct { color: var(--agc-muted); font-weight: 400; }
+        #deck-metrics-strip .dk-divider { height: 0.5px; background: var(--agc-divider); margin: var(--agy-section-gap, 9px) 0; }
+        #deck-metrics-strip .dk-foot-grid { display: flex; justify-content: space-between; align-items: flex-start; column-gap: 6px; font-variant-numeric: tabular-nums; }
+        #deck-metrics-strip .dk-foot-gen-wrap { display: contents; }
+        #deck-metrics-strip .dk-foot-gen-wrap[hidden] { display: none; }
+        #deck-metrics-strip .dk-foot-col { flex: 0 1 auto; min-width: 0; }
+        #deck-metrics-strip .dk-foot-top { height: 16px; min-width: 0; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+        #deck-metrics-strip .dk-foot-top-right, #deck-metrics-strip .dk-foot-sub-right { justify-content: flex-end; }
+        #deck-metrics-strip .dk-foot-val { font-size: 12px; font-weight: 500; line-height: 1.25; color: var(--agc-fg-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #deck-metrics-strip .dk-foot-sub { min-height: 15px; min-width: 0; margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; column-gap: 4px; row-gap: 1px; font-size: 11px; line-height: 1.25; color: var(--agc-muted); }
+        #deck-metrics-strip .dk-foot-sub > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #deck-metrics-strip .dk-foot-sub > [data-el="footOutSub"] { white-space: normal; word-break: keep-all; }
+        #deck-metrics-strip .dk-foot-right { text-align: right; }
+        #deck-metrics-strip .dk-ctx-pop .dk-panel-content:has(> .dk-foot-grid > [data-generation-block][hidden]) > .dk-divider { margin: calc(var(--agy-section-gap, 9px) - 2px) 0; }
+        #deck-metrics-strip .dk-foot-grid:has(> [data-generation-block][hidden]) { display: block; }
+        #deck-metrics-strip .dk-foot-grid:has(> [data-generation-block][hidden]) [data-el="rowCacheHit"] { display: flex; align-items: center; gap: 5px; min-height: 16px; width: 100%; font-size: 12px; line-height: 1.3; color: var(--agc-muted); }
+        #deck-metrics-strip .dk-foot-grid:has(> [data-generation-block][hidden]) [data-el="rowCacheHit"] .dk-foot-top,
+        #deck-metrics-strip .dk-foot-grid:has(> [data-generation-block][hidden]) [data-el="rowCacheHit"] .dk-foot-sub {
+          display: contents;
+          font-size: inherit;
+          line-height: inherit;
+        }
+        #deck-metrics-strip .dk-foot-grid:has(> [data-generation-block][hidden]) .dk-cache-ring { order: 1; width: 10.5px; height: 10.5px; }
+        #deck-metrics-strip .dk-foot-grid:has(> [data-generation-block][hidden]) [data-i18n="cache"] { order: 2; }
+        #deck-metrics-strip .dk-foot-grid:has(> [data-generation-block][hidden]) .dk-cache-pct {
+          order: 3;
+          font-size: 12px;
+          font-weight: 500;
+          line-height: 1.3;
+          color: var(--agc-fg);
+        }
+        #deck-metrics-strip .dk-foot-grid:has(> [data-generation-block][hidden]) .dk-cache-k { order: 4; margin-left: auto; font-size: 12px; line-height: 1.3; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-foot-grid:has(> [data-generation-block][hidden]) [data-el="rowCacheHit"],
+        #deck-metrics-strip[data-turn-layout="rows"]:has([data-turn-metrics-block]:not([hidden])) .dk-foot-grid:has(> [data-generation-block][hidden]) [data-el="rowCacheHit"] { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto minmax(31px, auto); gap: 0 10px; align-items: center; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-foot-grid:has(> [data-generation-block][hidden]) .dk-cache-ring,
+        #deck-metrics-strip[data-turn-layout="rows"]:has([data-turn-metrics-block]:not([hidden])) .dk-foot-grid:has(> [data-generation-block][hidden]) .dk-cache-ring { grid-column: 1; grid-row: 1; width: 8px; height: 8px; justify-self: center; overflow: visible; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-foot-grid:has(> [data-generation-block][hidden]) [data-i18n="cache"],
+        #deck-metrics-strip[data-turn-layout="rows"]:has([data-turn-metrics-block]:not([hidden])) .dk-foot-grid:has(> [data-generation-block][hidden]) [data-i18n="cache"] { grid-column: 2; grid-row: 1; margin-left: -5px; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-foot-grid:has(> [data-generation-block][hidden]) .dk-cache-pct,
+        #deck-metrics-strip[data-turn-layout="rows"]:has([data-turn-metrics-block]:not([hidden])) .dk-foot-grid:has(> [data-generation-block][hidden]) .dk-cache-pct { grid-column: 3; grid-row: 1; justify-self: end; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-foot-grid:has(> [data-generation-block][hidden]) .dk-cache-k,
+        #deck-metrics-strip[data-turn-layout="rows"]:has([data-turn-metrics-block]:not([hidden])) .dk-foot-grid:has(> [data-generation-block][hidden]) .dk-cache-k { grid-column: 4; grid-row: 1; margin-left: 0; justify-self: end; }
+        #deck-metrics-strip .dk-cache-ring { width: 10px; height: 10px; flex-shrink: 0; display: block; color: var(--agc-subtle); transition: color 0.18s ease; }
+        #deck-metrics-strip .dk-cache-ring[data-icon-state="warm"] { color: var(--agc-good); }
+        #deck-metrics-strip .dk-cache-ring[data-icon-state="warning"] { color: var(--agc-warn); }
+        #deck-metrics-strip .dk-cache-ring[data-icon-state="expired"] { color: var(--agc-danger); }
+        #deck-metrics-strip [data-el="ctxIconSvg"][data-cache-state="warning"] { color: var(--agc-warn); }
+        #deck-metrics-strip [data-el="ctxIconSvg"][data-cache-state="cold"] { color: var(--agc-danger); }
+        #deck-metrics-strip .dk-foot-grid [data-el="rowCacheHit"][data-cache-status="warning"] .dk-cache-pct,
+        #deck-metrics-strip .dk-foot-grid [data-el="rowCacheHit"][data-cache-status="warning"] .dk-cache-k,
+        #deck-metrics-strip .dk-foot-grid:has(> [data-generation-block][hidden]) [data-el="rowCacheHit"][data-cache-status="warning"] .dk-cache-pct { color: var(--agc-warn); }
+        #deck-metrics-strip .dk-foot-grid [data-el="rowCacheHit"][data-cache-status="cold"] .dk-cache-k { color: var(--agc-danger); }
+        #deck-metrics-strip .dk-cache-k:empty { display: none; }
+        #deck-metrics-strip .dk-speed-toggle { appearance: none; border: none; background: transparent; font: inherit; color: inherit; text-align: center; flex: 0 1 auto; width: auto; max-width: 100%; min-width: 0; padding: 2px 5px; margin: -2px 0; border-radius: 4.5px; cursor: pointer; transition: background 0.14s ease, transform 0.1s ease; }
+        #deck-metrics-strip .dk-speed-toggle .dk-foot-top, #deck-metrics-strip .dk-speed-toggle .dk-foot-sub { justify-content: center; flex-wrap: nowrap; white-space: nowrap; }
+        #deck-metrics-strip .dk-speed-toggle:hover { background: var(--agc-pill-hover); }
+        #deck-metrics-strip .dk-speed-toggle:active { background: var(--agc-pill-active); transform: scale(0.985); }
+        #deck-metrics-strip .dk-speed-slot { width: 11px; height: 9px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--agc-subtle); }
+        #deck-metrics-strip .dk-speed-slot[data-tier="green"] { color: var(--agc-good); }
+        #deck-metrics-strip .dk-speed-slot[data-tier="yellow"] { color: var(--agc-warn); }
+        #deck-metrics-strip .dk-speed-slot[data-tier="red"] { color: var(--agc-danger); }
+        #deck-metrics-strip .dk-speed-slot[data-mode="total"] [data-el="speedGlyphStream"], #deck-metrics-strip .dk-speed-slot[data-mode="stream"] [data-el="speedGlyphTotal"] { display: none; }
+        /* Quota Popover */
         #deck-metrics-strip .dk-quota-pop {
           width: max-content;
         }
@@ -420,79 +538,104 @@ function pageMount(d) {
            cell are subgrids, so every column lines up across all groups. */
         #deck-metrics-strip .dk-quota-pop > .dk-panel-content {
           display: grid;
-          grid-template-columns: minmax(54px, max-content) max-content max-content minmax(0, max-content);
+          grid-template-columns: minmax(48px, max-content) max-content max-content minmax(0, max-content);
           column-gap: 8px;
           align-content: start;
         }
         #deck-metrics-strip[data-quota-indicator="bar"] .dk-quota-pop > .dk-panel-content {
-          grid-template-columns: minmax(54px, max-content) max-content minmax(48px, 1fr) minmax(0, max-content);
+          grid-template-columns: minmax(48px, max-content) minmax(46px, 1fr) max-content minmax(0, max-content);
         }
         #deck-metrics-strip[data-language^="zh"] .dk-quota-pop > .dk-panel-content {
-          grid-template-columns: minmax(42px, max-content) max-content max-content minmax(0, max-content);
+          grid-template-columns: minmax(38px, max-content) max-content max-content minmax(0, max-content);
         }
         #deck-metrics-strip[data-language^="zh"][data-quota-indicator="bar"] .dk-quota-pop > .dk-panel-content {
-          grid-template-columns: minmax(42px, max-content) max-content minmax(48px, 1fr) minmax(0, max-content);
+          grid-template-columns: minmax(38px, max-content) minmax(46px, 1fr) max-content minmax(0, max-content);
         }
-        #deck-metrics-strip .dk-q-group,
+        #deck-metrics-strip .dk-quota-pop:not(:has(.dk-q-mid:not(:empty))) .dk-q-mid { display: none; }
+        #deck-metrics-strip .dk-quota-pop:not(:has(.dk-q-mid:not(:empty))) > .dk-panel-content {
+          grid-template-columns: minmax(48px, max-content) max-content max-content;
+        }
+        #deck-metrics-strip[data-quota-indicator="bar"] .dk-quota-pop:not(:has(.dk-q-mid:not(:empty))) > .dk-panel-content {
+          grid-template-columns: minmax(48px, max-content) minmax(46px, 1fr) max-content;
+        }
+        #deck-metrics-strip[data-language^="zh"] .dk-quota-pop:not(:has(.dk-q-mid:not(:empty))) > .dk-panel-content {
+          grid-template-columns: minmax(38px, max-content) max-content max-content;
+        }
+        #deck-metrics-strip[data-language^="zh"][data-quota-indicator="bar"] .dk-quota-pop:not(:has(.dk-q-mid:not(:empty))) > .dk-panel-content {
+          grid-template-columns: minmax(38px, max-content) minmax(46px, 1fr) max-content;
+        }
+        #deck-metrics-strip .dk-q-group {
+          grid-column: 1 / -1;
+          display: grid;
+          grid-template-columns: subgrid;
+          align-items: center;
+          row-gap: var(--agy-row-gap);
+          margin: 0;
+          transition: opacity .16s ease;
+        }
         #deck-metrics-strip .dk-q-row {
           grid-column: 1 / -1;
           display: grid;
           grid-template-columns: subgrid;
           align-items: center;
-        }
-        #deck-metrics-strip .dk-q-title {
-          grid-column: 1 / -1;
-          font-size: 13.5px;
-          font-weight: 500;
-          line-height: 1.25;
-          color: var(--foreground, #18181b);
-          color: color-mix(in srgb, var(--foreground, #18181b) 88%, transparent);
-        }
-        #deck-metrics-strip .dk-q-row {
-          font-size: 13.5px;
+          font-size: 11px;
+          line-height: 1.35;
           font-variant-numeric: tabular-nums;
+          border-radius: 4.5px;
+          padding: 2.5px 5px;
+          margin: 0 -5px;
+          transition: background 0.14s ease;
         }
-        #deck-metrics-strip .dk-q-label {
-          color: var(--muted-foreground, #8e8e93);
+        #deck-metrics-strip .dk-q-row:hover { background: var(--agc-pill-hover); }
+        #deck-metrics-strip .dk-q-title-row { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+        #deck-metrics-strip .dk-q-title {
+          font-size: 12px;
+          font-weight: 600;
+          line-height: 1.35;
+          color: var(--agc-fg);
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
+        #deck-metrics-strip .dk-q-group[data-active="true"] .dk-q-title { color: var(--agc-fg-strong); }
+        #deck-metrics-strip .dk-q-label { color: var(--agc-muted); }
         #deck-metrics-strip .dk-q-mid {
           grid-column: 4;
-          text-align: left;
-          color: var(--muted-foreground, #8e8e93);
+          text-align: right;
+          font-size: 11px;
+          color: var(--agc-muted);
         }
         #deck-metrics-strip .dk-q-right {
           grid-column: 2 / 4;
           display: grid;
           grid-template-columns: subgrid;
           align-items: center;
-          column-gap: 5px;
-          color: var(--muted-foreground, #8e8e93);
+          column-gap: 8px;
+          color: var(--agc-fg-strong);
           white-space: nowrap;
         }
         /* Optional presentation inspired by z21100644/agy-capsule PR #1.
            Both styles use the existing four-category telemetry, unchanged. */
-        #deck-metrics-strip .dk-q-group { transition: opacity .2s ease; }
-        #deck-metrics-strip[data-highlight-active-model="true"] .dk-q-group[data-active="false"] { opacity: .7; }
-        #deck-metrics-strip .dk-q-pct { justify-self: end; }
-        #deck-metrics-strip .dk-q-meter { min-width: 24px; height: 4px; border-radius: 99px; overflow: hidden; background: rgba(142,142,147,.24); }
-        #deck-metrics-strip .dk-q-meter > span { display: block; height: 100%; border-radius: inherit; }
-        #deck-metrics-strip .dk-q-active { display: inline-block; width: 0; height: 4px; flex-shrink: 0; border-radius: 50%; background: currentColor; margin-left: 0; vertical-align: middle; align-self: center; opacity: 0; transform: scale(.5); transition: opacity .2s ease, transform .2s ease, width .2s ease, margin-left .2s ease; }
-        #deck-metrics-strip[data-highlight-active-model="true"] .dk-q-group[data-active="true"] .dk-q-active { width: 4px; margin-left: 4px; opacity: 1; transform: scale(1); }
+        #deck-metrics-strip[data-highlight-active-model="true"] .dk-q-group[data-active="false"] { opacity: .54; }
+        #deck-metrics-strip[data-highlight-active-model="true"] .dk-q-group[data-active="false"]:hover { opacity: .96; }
+        #deck-metrics-strip .dk-q-pct { justify-self: end; font-weight: 500; color: var(--agc-fg-strong); }
+        #deck-metrics-strip .dk-q-row[data-tone="warn"] .dk-q-pct { color: var(--agc-warn); }
+        #deck-metrics-strip .dk-q-row[data-tone="danger"] .dk-q-pct { color: var(--agc-danger); font-weight: 600; }
+        #deck-metrics-strip .dk-q-meter { width: 100%; min-width: 34px; height: 4px; border-radius: 99px; overflow: hidden; background: var(--agc-track); box-shadow: inset 0 0 0 0.5px var(--agc-track-ring); }
+        #deck-metrics-strip .dk-q-meter > span { display: block; height: 100%; border-radius: inherit; background-image: linear-gradient(180deg, var(--agc-seg-sheen) 0%, transparent 72%); transition: width 0.25s ease; }
+        #deck-metrics-strip .dk-q-active { display: none; align-items: center; gap: 4px; font-size: 11px; font-weight: 400; color: var(--agc-fg); white-space: nowrap; flex-shrink: 0; }
+        #deck-metrics-strip .dk-q-active-dot { width: 4.5px; height: 4.5px; border-radius: 50%; background: var(--agc-good); box-shadow: inset 0 0.5px 0 var(--agc-dot-rim); flex-shrink: 0; }
+        #deck-metrics-strip[data-highlight-active-model="true"] .dk-q-group[data-active="true"] .dk-q-active { display: inline-flex; }
         /* Shared spacing rules; indicator and marker are independent. */
         #deck-metrics-strip .dk-list { row-gap: var(--agy-row-gap); }
-        #deck-metrics-strip .dk-cache-bar { padding-bottom: var(--agy-section-gap); margin-bottom: var(--agy-section-gap); }
         #deck-metrics-strip .dk-generation { margin-top: var(--agy-section-gap); padding-top: var(--agy-section-gap); }
-        #deck-metrics-strip [data-generation-block]:not([hidden]) + [data-turn-metrics-block] { border-top: 0; padding-top: 0; margin-top: var(--agy-section-gap); }
-        #deck-metrics-strip .generation-heading { margin-bottom: var(--agy-row-gap); }
-        #deck-metrics-strip .dk-q-group { margin: 0; }
-        #deck-metrics-strip .dk-q-group + .dk-q-group { margin-top: calc(var(--agy-section-gap) + 4px); padding-top: 0; border-top: 0; }
-        #deck-metrics-strip .dk-q-title { margin-bottom: var(--agy-row-gap); }
-        #deck-metrics-strip .dk-q-row { margin-bottom: var(--agy-row-gap); }
+        #deck-metrics-strip .dk-q-group + .dk-q-group { margin-top: var(--agy-section-gap); padding-top: var(--agy-section-gap); border-top: 0.5px solid var(--agc-divider); }
         #deck-metrics-strip .dk-q-row:last-child { margin-bottom: 0; }
         #deck-metrics-strip[data-panel-layout="matched"] .dk-ctx-pop > .dk-panel-content { height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
         #deck-metrics-strip[data-panel-layout="matched"] .dk-quota-pop > .dk-panel-content { height: 100%; align-content: space-between; }
-        #deck-metrics-strip[data-label-case="lowercase"] .dk-cache-left,
         #deck-metrics-strip[data-label-case="lowercase"] .dk-used-pct,
+        #deck-metrics-strip[data-label-case="lowercase"] .dk-foot-sub,
         #deck-metrics-strip[data-label-case="lowercase"] .dk-item-label,
         #deck-metrics-strip[data-label-case="lowercase"] .turn-bar-label,
         #deck-metrics-strip[data-label-case="lowercase"] .turn-bar-short,
@@ -502,24 +645,26 @@ function pageMount(d) {
         #deck-metrics-strip[data-column-percent="true"]:not([data-context-layout="rows"]) .dk-item-pct { display: block; }
         #deck-metrics-strip[data-column-label="false"]:not([data-context-layout="rows"]) .dk-item-label,
         #deck-metrics-strip[data-column-value="false"]:not([data-context-layout="rows"]) .dk-item-k { display: none; }
-        #deck-metrics-strip[data-context-layout="rows"] .dk-list { grid-template-columns: auto minmax(0, 1fr) auto auto; column-gap: 8px; align-items: center; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-list { grid-template-columns: auto minmax(0, 1fr) auto minmax(36px, auto); column-gap: 8px; align-items: center; margin: 0 -5px; }
         #deck-metrics-strip[data-context-layout="rows"] .dk-item-row,
-        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-item { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
-        #deck-metrics-strip[data-context-layout="rows"] .dk-item-body { grid-column: 2 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-item { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 2.5px 5px; border-radius: 4.5px; }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-item-row:hover,
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-item:hover { background: var(--agc-pill-hover); }
+        #deck-metrics-strip[data-context-layout="rows"] .dk-item-body { grid-column: 2 / -1; display: grid; grid-template-columns: subgrid; column-gap: 10px; align-items: center; }
         #deck-metrics-strip[data-context-layout="rows"] .dk-item-label { grid-column: 1; grid-row: 1; }
         #deck-metrics-strip[data-context-layout="rows"] .dk-item-pct { grid-column: 2; grid-row: 1; justify-self: end; }
         #deck-metrics-strip[data-context-layout="rows"] .dk-item-k { grid-column: 3; grid-row: 1; justify-self: end; }
-        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-list { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; row-gap: var(--agy-row-gap); align-items: center; }
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-list { grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; row-gap: var(--agy-row-gap); align-items: center; margin: 0 -5px; }
         #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-label { grid-column: 2; grid-row: 1; display: block; }
         #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-short { display: none; }
         #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-item[data-turn-row="requests"] { container-type: normal; }
-        #deck-metrics-strip[data-context-layout="rows"] .dk-item-pct { margin-right: 4px; }
         #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-val { grid-column: 3; grid-row: 1; justify-self: end; }
         #deck-metrics-strip[data-context-layout="rows"] .dk-item-row > .dk-dot,
-        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-line { grid-column: 1; grid-row: 1; align-self: center; width: 10px; height: 10px; margin: 0; border-radius: 3px; }
+        #deck-metrics-strip[data-turn-layout="rows"] .turn-bar-line { grid-column: 1; grid-row: 1; align-self: center; width: 6px; height: 6px; margin: 0; border-radius: 2px; box-shadow: inset 0 0.5px 0 var(--agc-dot-rim); }
         #deck-metrics-strip[data-context-marker="dot"][data-context-layout="rows"] .dk-item-row > .dk-dot,
         #deck-metrics-strip[data-turn-marker="dot"][data-turn-layout="rows"] .turn-bar-line { border-radius: 50%; }
         #deck-metrics-strip[data-show-context-breakdown="false"] .dk-list { display: none; }
+        #deck-metrics-strip[data-show-context-breakdown="false"] .dk-track { margin-bottom: 0; }
         #deck-metrics-strip .dk-item-label { order: var(--agy-order-label, 0); }
         #deck-metrics-strip .dk-item-k { order: var(--agy-order-value, 1); }
         #deck-metrics-strip .dk-item-pct { order: var(--agy-order-percent, 2); }
@@ -528,74 +673,90 @@ function pageMount(d) {
       <!-- Context Capsule + Popover -->
       <div class="dk-grp" data-el="grpCtx">
         <button type="button" class="dk-pill" aria-expanded="false">
-          <svg class="dk-svg" data-el="ctxIconSvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+          <svg class="dk-svg" data-el="ctxIconSvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
           <span class="dk-val" data-k="pillCtx">--%</span>
           <span class="dk-speed" data-el="pillSpeed" hidden><span class="dk-speed-dot" aria-hidden="true"></span><span data-generation="speed"></span></span>
         </button>
         <div class="dk-pop dk-ctx-pop">
           <div class="dk-panel-content">
-          <div class="dk-cache-bar" data-el="rowCacheHit">
-            <div class="dk-cache-left"><span data-i18n="cache">Cache</span><span class="dk-cache-pct" data-k="valCacheHit" data-el="valCacheHitEl">0%</span><span class="dk-dot" data-el="dotCached" style="display:inline-flex;align-items:center;justify-content:center;background:transparent"></span></div>
-            <div class="dk-cache-k" data-k="valCacheHitK"></div>
-          </div>
-          <div class="dk-summary-row">
-            <div class="dk-used-pct" data-context-tip="overview"><span data-k="usedPctText">0%</span> <span data-i18n="used">used</span></div>
-            <div class="dk-used-frac" data-k="usedFrac" data-context-tip="overview">0 / --</div>
+          <div class="dk-head-row" data-context-tip="overview">
+            <div class="dk-used-pct"><span data-i18n="ctxTitle">Context</span> <span data-k="usedPctText">0%</span> <span data-i18n="used">used</span></div>
+            <div class="dk-used-frac" data-k="usedFrac">0 / --</div>
           </div>
           <div class="dk-track" data-context-tip="overview">
-            <div class="dk-seg" data-el="segTurn0" style="width: 0%; background: #d4940a"></div>
-            <div class="dk-seg" data-el="segRead" style="width: 0%; background: #388bfd"></div>
-            <div class="dk-seg" data-el="segThink" style="width: 0%; background: #00b386"></div>
-            <div class="dk-seg" data-el="segOut" style="width: 0%; background: #e86a24"></div>
+            <div class="dk-seg" data-el="segTurn0" data-cat="turn0" style="width: 0%"></div>
+            <div class="dk-seg" data-el="segRead" data-cat="read" style="width: 0%"></div>
+            <div class="dk-seg" data-el="segThink" data-cat="think" style="width: 0%"></div>
+            <div class="dk-seg" data-el="segOut" data-cat="out" style="width: 0%"></div>
           </div>
           <div class="dk-list">
-            <div class="dk-item-row" data-context-tip="turn0">
-              <span class="dk-dot" style="background:#d4940a"></span>
+            <div class="dk-item-row" data-cat="turn0" data-context-tip="turn0">
+              <span class="dk-dot"></span>
               <div class="dk-item-body"><span class="dk-item-label" data-i18n="turn0">Turn0</span><span class="dk-item-k" data-k="valTurn0K">0</span><span class="dk-item-pct" data-k="valTurn0Pct">0%</span></div>
             </div>
-            <div class="dk-item-row" data-context-tip="read">
-              <span class="dk-dot" style="background:#388bfd"></span>
+            <div class="dk-item-row" data-cat="read" data-context-tip="read">
+              <span class="dk-dot"></span>
               <div class="dk-item-body"><span class="dk-item-label" data-i18n="read">Read</span><span class="dk-item-k" data-k="valReadK">0</span><span class="dk-item-pct" data-k="valReadPct">0%</span></div>
             </div>
-            <div class="dk-item-row" data-context-tip="think">
-              <span class="dk-dot" style="background:#00b386"></span>
+            <div class="dk-item-row" data-cat="think" data-context-tip="think">
+              <span class="dk-dot"></span>
               <div class="dk-item-body"><span class="dk-item-label" data-i18n="think">Think</span><span class="dk-item-k" data-k="valThinkK">0</span><span class="dk-item-pct" data-k="valThinkPct">0%</span></div>
             </div>
-            <div class="dk-item-row" data-context-tip="write">
-              <span class="dk-dot" style="background:#e86a24"></span>
+            <div class="dk-item-row" data-cat="out" data-context-tip="write">
+              <span class="dk-dot"></span>
               <div class="dk-item-body"><span class="dk-item-label" data-i18n="write">Write</span><span class="dk-item-k" data-k="valOutK">0</span><span class="dk-item-pct" data-k="valOutPct">0%</span></div>
             </div>
           </div>
-          <div class="dk-generation" data-generation-block>
-            ${presentation.generationMarkup()}
-          </div>
           ${presentation.turnMetricsMarkup('dk-generation')}
+          <div class="dk-divider"></div>
+          <div class="dk-foot-grid">
+            <div class="dk-foot-col" data-el="rowCacheHit">
+              <div class="dk-foot-top"><svg class="dk-cache-ring" data-el="cacheRing" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="none" stroke="var(--agc-ring-track, rgba(142,142,147,0.22))" stroke-width="1.8"></circle><circle data-el="cacheArc" cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="0 28.27" transform="rotate(-90 6 6)" style="display:none"></circle></svg><span class="dk-foot-val dk-cache-pct" data-k="valCacheHit" data-el="valCacheHitEl">0%</span></div>
+              <div class="dk-foot-sub"><span data-i18n="cache">Cache</span><span class="dk-cache-k" data-k="valCacheHitK"></span></div>
+            </div>
+            <div class="dk-foot-gen-wrap" data-generation-block>
+              <button type="button" class="dk-foot-col dk-speed-toggle" data-el="speedToggle" aria-pressed="false">
+                <div class="dk-foot-top"><span class="dk-speed-slot" data-el="speedSlot" data-mode="total"><svg viewBox="0 0 14 12" width="10.5" height="9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path data-el="speedGlyphTotal" d="M2.6 3.1L6.3 6.0 2.6 8.9M7.5 8.9H11.5"></path><path data-el="speedGlyphStream" d="M3.8 9.5A2.3 2.3 0 0 1 4.07 4.92 3.2 3.2 0 0 1 10.4 5.5 2.0 2.0 0 0 1 10.5 9.5Z"></path></svg></span><span class="dk-foot-val" data-generation="speed">—</span></div>
+                <div class="dk-foot-sub"><span data-generation="timing">—</span></div>
+              </button>
+              <div class="dk-foot-col dk-foot-right" data-el="footOutCol">
+                <div class="dk-foot-top dk-foot-top-right"><span class="dk-foot-val" data-el="footOutVal">—</span></div>
+                <div class="dk-foot-sub dk-foot-sub-right"><span data-el="footOutSub">—</span></div>
+              </div>
+            </div>
+          </div>
           </div>
         </div>
       </div>
+
+      <span class="dk-strip-sep dk-strip-sep-quota" data-el="sepQuota" aria-hidden="true"></span>
 
       <!-- Merged Quota Capsule (5h + Weekly) + Popover -->
       <div class="dk-grp" data-el="grpQuota">
         <button type="button" class="dk-pill dk-pill-quota" aria-expanded="false">
           <span class="dk-q-pair" data-el="pair5h">
-            <svg class="dk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+            <svg class="dk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><polyline points="12 6.8 12 12 15.6 14.1"/></svg>
             <span class="dk-val" data-k="pill5h">--%</span>
           </span>
           <span class="dk-q-pair" data-el="pairWk">
-            <svg class="dk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <svg class="dk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3.5" ry="3.5"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             <span class="dk-val" data-k="pillWk">--%</span>
           </span>
         </button>
         <div class="dk-pop dk-quota-pop" data-el="quotaPop"></div>
       </div>
+
+      <span class="dk-strip-sep dk-strip-sep-err" data-el="sepErr" aria-hidden="true" hidden></span>
+
       <div class="dk-grp" data-el="grpError" hidden>
         <button type="button" class="dk-pill" aria-expanded="false">
-          <svg class="dk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
+          <svg class="dk-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
           <span class="dk-val" data-request-error="label"></span>
         </button>
         <div class="dk-pop dk-error-pop">
-          <div class="dk-error-heading" data-request-error="label"></div>
-          <div data-request-error="detail"></div>
+          <div class="dk-error-head"><span class="dk-error-dot" aria-hidden="true"></span><span class="dk-error-heading" data-request-error="label"></span></div>
+          <div class="dk-divider"></div>
+          <div class="dk-error-detail" data-request-error="detail"></div>
           <div class="dk-error-diagnostic" data-request-error="diagnostic"></div>
         </div>
       </div>
@@ -661,8 +822,8 @@ function pageMount(d) {
     };
     root._layoutPopovers = (grp = root._pinnedGroup || root.querySelector('.dk-grp:hover')) => {
       const pop = grp?.querySelector('.dk-pop');
-      if (!pop && root.dataset.panelLayout !== 'matched') {
-        root._fitPanelHeights?.();
+      if (!pop) {
+        if (root.dataset.panelLayout !== 'matched' && root._heightKey) root._fitPanelHeights?.();
         return;
       }
       // Constrain width before measuring heights or positioning; moving a panel
@@ -679,7 +840,7 @@ function pageMount(d) {
       const limit = `${Math.max(0, maxRight - minLeft)}px`;
       if (root.style.getPropertyValue('--dk-pop-max-width') !== limit) root.style.setProperty('--dk-pop-max-width', limit);
       root._fitPanelHeights?.();
-      const width = pop?.getBoundingClientRect().width;
+      const width = pop ? (parseFloat(getComputedStyle(pop).width) || pop.getBoundingClientRect().width) : 0;
       if (!width) return;
       const pill = grp.querySelector('.dk-pill').getBoundingClientRect();
       const stripLeft = root.getBoundingClientRect().left;
@@ -732,15 +893,49 @@ function pageMount(d) {
     root._onResize = () => root._scheduleLayout?.();
     window.addEventListener('resize', root._onResize);
     root.querySelector('[data-el="rowCacheHit"]').addEventListener('mouseenter', () => root._refreshCacheTooltip?.());
+    const ctxPopInit = root.querySelector('.dk-ctx-pop');
+    if (ctxPopInit && !ctxPopInit.dataset.speedMode) ctxPopInit.dataset.speedMode = 'total';
+    for (const target of root.querySelectorAll('.dk-seg[data-cat], .dk-item-row[data-cat]')) {
+      const cat = target.dataset.cat;
+      target.addEventListener('mouseenter', () => { if (ctxPopInit) ctxPopInit.dataset.hoverCat = cat; });
+      target.addEventListener('mouseleave', () => { if (ctxPopInit && ctxPopInit.dataset.hoverCat === cat) delete ctxPopInit.dataset.hoverCat; });
+    }
+    const speedToggleBtn = root.querySelector('[data-el="speedToggle"]');
+    if (speedToggleBtn) {
+      speedToggleBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (!ctxPopInit) return;
+        ctxPopInit.dataset.speedMode = ctxPopInit.dataset.speedMode === 'stream' ? 'total' : 'stream';
+        const cur = root._deckQuotas;
+        if (cur) presentation.renderGeneration(ctxPopInit, cur.generation, root._deckLabels, cur.prefs);
+        if (root.dataset.panelLayout === 'matched') {
+          root._heightKey = '';
+          root._layoutPopovers?.();
+        }
+      });
+    }
   }
 
-  if (!footerLeft.contains(host)) {
-    footerLeft.appendChild(host);
+  // Apply skin, theme, i18n, and values before connecting the shadow host so first paint has zero flash.
+  const quotaPop = root.querySelector('[data-el="quotaPop"]');
+  if (quotaPop && quotaPop.innerHTML !== d.quotaHtml) {
+    quotaPop.innerHTML = d.quotaHtml;
+    root._i18nKey = '';
   }
+
+  const nextTheme = detectHostTheme();
+  if (root.dataset.theme !== nextTheme) root.dataset.theme = nextTheme;
   const labels = presentation.apply(root, d.prefs);
+  root._deckQuotas = d;
+  root._deckLabels = labels;
+
   presentation.renderContextTooltips(root, d.contextData, labels);
   const alerts = presentation.renderAlerts(root, { ...d.contextData, requestError: d.requestError }, d.prefs, labels);
   root.querySelector('[data-el="grpQuota"]').hidden = d.cloudPaygo;
+  const sepQuota = root.querySelector('[data-el="sepQuota"]');
+  const sepErr = root.querySelector('[data-el="sepErr"]');
+  if (sepQuota) sepQuota.hidden = d.cloudPaygo;
+  if (sepErr) sepErr.hidden = !alerts.visible;
   if (root._pinnedGroup?.hidden) {
     root._pinnedGroup.removeAttribute('data-pinned');
     root._pinnedGroup.querySelector('.dk-pill').setAttribute('aria-expanded', 'false');
@@ -748,10 +943,15 @@ function pageMount(d) {
     root.removeAttribute('data-pinned');
   }
   root._refreshCacheTooltip = () => {
-    root.querySelector('[data-el="rowCacheHit"]').title = presentation.cacheTooltip(d.cache, labels, Date.now(), d.prefs);
+    const cur = root._deckQuotas;
+    if (!cur) return;
+    const tip = presentation.cacheTooltip(cur.cache, root._deckLabels, Date.now(), cur.prefs);
+    const el = root.querySelector('[data-el="rowCacheHit"]');
+    if (el && el.title !== tip) el.title = tip;
   };
   root._refreshCacheTooltip();
-  presentation.renderGeneration(root.querySelector('.dk-ctx-pop'), d.generation, labels, d.prefs);
+  const ctxPopEl = root.querySelector('.dk-ctx-pop');
+  if (ctxPopEl) presentation.renderGeneration(ctxPopEl, d.generation, labels, d.prefs);
   presentation.renderTurnMetrics(root, d.turnMetrics, labels, d.prefs);
   const pillSpeed = root.querySelector('[data-el="pillSpeed"]');
   const tps = d.turnSpeed?.generation?.tps;
@@ -788,9 +988,10 @@ function pageMount(d) {
     pillSpeed.removeAttribute('data-tier');
   }
   const contextPill = root.querySelector('[data-el="grpCtx"] .dk-pill');
-  contextPill.setAttribute('aria-label', labels.context);
+  if (contextPill.getAttribute('aria-label') !== labels.context) contextPill.setAttribute('aria-label', labels.context);
   for (const node of [contextPill, ...contextPill.querySelectorAll('[title]')]) node.removeAttribute('title');
-  root.querySelector('[data-el="grpQuota"] .dk-pill').setAttribute('aria-label', labels.quota);
+  const quotaPill = root.querySelector('[data-el="grpQuota"] .dk-pill');
+  if (quotaPill.getAttribute('aria-label') !== labels.quota) quotaPill.setAttribute('aria-label', labels.quota);
 
   const setK = (k, val) => {
     const el = root.querySelector(`[data-k="${k}"]`);
@@ -801,18 +1002,62 @@ function pageMount(d) {
   setK('usedPctText', d.pillCtx);
   setK('usedFrac', d.usedFrac);
   setK('valCacheHit', d.valCacheHit);
-  setK('valCacheHitK', d.valCacheHitK || '');
   setK('valTurn0K', d.valTurn0K);
   setK('valReadK', d.valReadK);
   setK('valThinkK', d.valThinkK);
   setK('valOutK', d.valOutK);
+  for (const [cat, val] of [['turn0', d.valTurn0K], ['read', d.valReadK], ['think', d.valThinkK], ['out', d.valOutK]]) {
+    const row = root.querySelector(`.dk-item-row[data-cat="${cat}"]`);
+    const z = val === '0' ? 'true' : 'false';
+    if (row && row.dataset.zero !== z) row.dataset.zero = z;
+  }
   setK('valTurn0Pct', d.valTurn0Pct);
   setK('valReadPct', d.valReadPct);
   setK('valThinkPct', d.valThinkPct);
   setK('valOutPct', d.valOutPct);
 
+  // Update progress bar & cache cooling indicator before host attachment
+  const segRead = root.querySelector('[data-el="segRead"]');
+  const segOut = root.querySelector('[data-el="segOut"]');
+  const segThink = root.querySelector('[data-el="segThink"]');
+  const segTurn0 = root.querySelector('[data-el="segTurn0"]');
+  const cacheRing = root.querySelector('[data-el="cacheRing"]');
+  const cacheArc = root.querySelector('[data-el="cacheArc"]');
+  const ctxIconSvg = root.querySelector('[data-el="ctxIconSvg"]');
+
+  if (segRead && segRead.style.width !== d.segReadW) segRead.style.width = d.segReadW;
+  if (segOut && segOut.style.width !== d.segOutW) segOut.style.width = d.segOutW;
+  if (segThink && segThink.style.width !== d.segThinkW) segThink.style.width = d.segThinkW;
+  if (segTurn0 && segTurn0.style.width !== d.segTurn0W) segTurn0.style.width = d.segTurn0W;
+  if (ctxIconSvg) {
+    if (ctxIconSvg.style.color) ctxIconSvg.style.color = '';
+    const cacheState = d.cacheStatus || 'fresh';
+    if (ctxIconSvg.dataset.cacheState !== cacheState) ctxIconSvg.dataset.cacheState = cacheState;
+  }
+  presentation.renderCacheRing(cacheRing, cacheArc, d.cacheStatus, d.cacheHitPct);
+  const rowCacheHit = root.querySelector('[data-el="rowCacheHit"]');
+  if (rowCacheHit) {
+    const cacheStatus = d.cacheStatus || 'fresh';
+    if (rowCacheHit.dataset.cacheStatus !== cacheStatus) rowCacheHit.dataset.cacheStatus = cacheStatus;
+  }
+  const valCacheHitEl = root.querySelector('[data-el="valCacheHitEl"]');
+  if (valCacheHitEl) {
+    if (valCacheHitEl.style.color) valCacheHitEl.style.color = '';
+    if (valCacheHitEl.style.textDecoration !== d.cacheValDeco) valCacheHitEl.style.textDecoration = d.cacheValDeco;
+    if (valCacheHitEl.style.opacity !== d.cacheValOp) valCacheHitEl.style.opacity = d.cacheValOp;
+  }
+  const valCacheHitKEl = root.querySelector('[data-k="valCacheHitK"]');
+  if (valCacheHitKEl) {
+    const cacheSubText = d.cacheStatus === 'cold' ? (labels.cacheExpiredTag || 'expired') : (d.valCacheHitK || d.cacheAge || '');
+    if (valCacheHitKEl.textContent !== cacheSubText) valCacheHitKEl.textContent = cacheSubText;
+    if (valCacheHitKEl.style.color) valCacheHitKEl.style.color = '';
+  }
+
+  if (!footerLeft.contains(host)) {
+    footerLeft.appendChild(host);
+  }
+
   // Match active model to quota pills
-  root._deckQuotas = d;
   // Reveals reserve their final width before fitting the footer. Animating layout
   // width from zero lets the fit check pass too early and overlap native buttons.
   // Leaving items may shrink; they never need more room than the fitted layout.
@@ -894,21 +1139,35 @@ function pageMount(d) {
       matched = groups.find((g) => g.title === 'Gemini') || groups[0] || null;
     }
     for (const group of root.querySelectorAll('.dk-q-group')) {
-      group.dataset.active = group.dataset.pool === matched?.rawName ? 'true' : 'false';
+      const isAct = group.dataset.pool === matched?.rawName ? 'true' : 'false';
+      if (group.dataset.active !== isAct) group.dataset.active = isAct;
     }
 
     const q5hVal = matched ? matched.q5h || '--%' : '--%';
     const qWkVal = matched ? matched.qWk || '--%' : '--%';
     setK('pill5h', q5hVal);
     setK('pillWk', qWkVal);
+    const toneFor = (str) => {
+      const m = String(str || '').match(/^(\d+)%$/);
+      if (!m) return '';
+      const n = Number(m[1]);
+      return n <= 10 ? 'danger' : n <= 25 ? 'warn' : '';
+    };
     const hideAbsent = q.prefs?.hideUnavailableQuota === true;
     const pair5h = root.querySelector('[data-el="pair5h"]');
     const pairWk = root.querySelector('[data-el="pairWk"]');
+    const t5h = toneFor(q5hVal);
+    const tWk = toneFor(qWkVal);
+    if (t5h) { if (pair5h.dataset.tone !== t5h) pair5h.dataset.tone = t5h; }
+    else if (pair5h.hasAttribute('data-tone')) pair5h.removeAttribute('data-tone');
+    if (tWk) { if (pairWk.dataset.tone !== tWk) pairWk.dataset.tone = tWk; }
+    else if (pairWk.hasAttribute('data-tone')) pairWk.removeAttribute('data-tone');
     pair5h.hidden = hideAbsent && q5hVal === '--%' && qWkVal !== '--%';
     pairWk.hidden = hideAbsent && qWkVal === '--%' && q5hVal !== '--%';
     motion('pair5h', pair5h);
     motion('pairWk', pairWk);
-    root.dataset.preferWkOnly = q5hVal === '--%' && qWkVal !== '--%' ? '1' : '0';
+    const prefWk = q5hVal === '--%' && qWkVal !== '--%' ? '1' : '0';
+    if (root.dataset.preferWkOnly !== prefWk) root.dataset.preferWkOnly = prefWk;
     return mt;
   };
   root._applyModelQuota = applyModelQuota;
@@ -1131,43 +1390,8 @@ function pageMount(d) {
     }
   }
 
-  // Update progress bar & cache cooling indicator
-  const segRead = root.querySelector('[data-el="segRead"]');
-  const segOut = root.querySelector('[data-el="segOut"]');
-  const segThink = root.querySelector('[data-el="segThink"]');
-  const segTurn0 = root.querySelector('[data-el="segTurn0"]');
-  const dotCached = root.querySelector('[data-el="dotCached"]');
-  const ctxIconSvg = root.querySelector('[data-el="ctxIconSvg"]');
-
-  if (segRead) segRead.style.width = d.segReadW;
-  if (segOut) segOut.style.width = d.segOutW;
-  if (segThink) segThink.style.width = d.segThinkW;
-  if (segTurn0) segTurn0.style.width = d.segTurn0W;
-  if (ctxIconSvg) ctxIconSvg.style.color = d.ctxIconColor || '';
-  if (dotCached && dotCached.innerHTML !== d.cacheIconSvg) {
-    dotCached.innerHTML = d.cacheIconSvg;
-  }
-  const valCacheHitEl = root.querySelector('[data-el="valCacheHitEl"]');
-  if (valCacheHitEl) {
-    valCacheHitEl.style.color = d.cacheValColor;
-    valCacheHitEl.style.textDecoration = d.cacheValDeco;
-    valCacheHitEl.style.opacity = d.cacheValOp;
-  }
-  const valCacheHitKEl = root.querySelector('[data-k="valCacheHitK"]');
-  if (valCacheHitKEl) {
-    valCacheHitKEl.style.color = d.cacheValColor;
-  }
-
   motion('speed', pillSpeed, text => { speedValue.textContent = text.trim(); });
   motion('error', root.querySelector('[data-el="grpError"]'));
-
-  // Update Quota Popover HTML
-  const quotaPop = root.querySelector('[data-el="quotaPop"]');
-  if (quotaPop && quotaPop.innerHTML !== d.quotaHtml) {
-    quotaPop.innerHTML = d.quotaHtml;
-  }
-  presentation.apply(root, d.prefs);
-  applyModelQuota();
 
   root._fitPanelHeights = () => {
     // Only visible capsules participate in matched panel height.
@@ -1187,7 +1411,7 @@ function pageMount(d) {
     const previous = pops.map(pop => ({ display: pop.style.display, visibility: pop.style.visibility }));
     root.dataset.panelLayout = 'natural';
     for (const pop of pops) { pop.style.height = ''; pop.style.display = 'block'; pop.style.visibility = 'hidden'; }
-    const heights = pops.map(pop => pop.getBoundingClientRect().height);
+    const heights = pops.map(pop => parseFloat(getComputedStyle(pop).height) || pop.getBoundingClientRect().height);
     root.dataset.panelLayout = 'matched';
     for (const [index, pop] of pops.entries()) {
       pop.style.display = previous[index].display;
@@ -1201,127 +1425,78 @@ function pageMount(d) {
   return 'ok:' + modelText;
 }
 
-function fmtK(n) {
-  return formatTokens(n);
-}
-
-function fmtColK(n) {
-  return formatTokens(n);
-}
-
-function quotaColor(frac) {
-  const clamped = Math.max(0, Math.min(1, Number(frac || 0)));
-  const pctLeft = Math.round(clamped * 100);
-  return pctLeft <= 10 ? '#ef4444' : pctLeft <= 25 ? '#f59e0b' : '#4ea84e';
-}
-
-function makeRingSvg(frac) {
-  const clamped = Math.max(0, Math.min(1, Number(frac || 0)));
-  const r = 6.5;
-  const c = 2 * Math.PI * r;
-  const offset = c * (1 - clamped);
-  const color = quotaColor(clamped);
-  return (
-    '<svg width="16" height="16" viewBox="0 0 18 18" style="transform: rotate(-90deg); flex-shrink: 0;">' +
-    '<circle cx="9" cy="9" r="' + r + '" fill="none" stroke="rgba(142,142,147,0.28)" stroke-width="2.2"/>' +
-    '<circle cx="9" cy="9" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="2.2" stroke-linecap="round" ' +
-    'stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '"/>' +
-    '</svg>'
-  );
-}
-
-function formatGroupTitle(raw) {
-  const s = String(raw || '').trim();
-  if (s === 'Gemini Models') return 'Gemini';
-  if (s.toLowerCase().startsWith('claude')) return 'Claude';
-  return s;
-}
-
 function toView(d) {
-  const maxCtx = d.maxContextTokens || 0;
-  const ctx = d.contextTokens || 0;
-  const cached = d.cachedIn || 0;
-  const out = d.totalOutputTokens || 0;
-  const think = d.totalThinkingTokens || 0;
-  const turn0 = d.turn0Tokens || 0;
-  const read = Math.max(0, ctx - turn0 - out - think);
-
-  const hasMax = maxCtx > 0;
-  const usedPctRound = hasMax ? Math.round((ctx / maxCtx) * 100) : 0;
-  const usedPctExact = hasMax ? Math.min(100, (ctx / maxCtx) * 100) : 0;
-  const compSum = read + out + think + turn0;
-  const scale = compSum > 0 ? usedPctExact / compSum : 0;
-
-  const segReadW = (read * scale).toFixed(2) + '%';
-  const segOutW = (out * scale).toFixed(2) + '%';
-  const segThinkW = (think * scale).toFixed(2) + '%';
-  const segTurn0W = (turn0 * scale).toFixed(2) + '%';
-
-  const pctStr = (val) => (hasMax ? Math.round((val / maxCtx) * 100) + '%' : (ctx === 0 ? '0%' : '--%'));
-  const readPct = pctStr(read);
-  const outPct = pctStr(out);
-  const thinkPct = pctStr(think);
-  const turn0Pct = pctStr(turn0);
+  const bd = contextBreakdown(d);
   const cache = cacheView(d, d.prefs);
-  const { iconSvg: cacheIconSvg, valColor: cacheValColor, valDeco: cacheValDeco, valOp: cacheValOp, text: valCacheHit, countdown: valCacheHitK, ctxIconColor } = cache;
+  const {
+    status: cacheStatus, hitPct: cacheHitPct, age: cacheAge,
+    valDeco: cacheValDeco, valOp: cacheValOp, text: valCacheHit,
+    countdown: valCacheHitK, ctxIconColor,
+  } = cache;
 
-  const quotaSummaryGroups = [];
-  let quotaHtml = '<div class="dk-panel-content">';
-  const windowOrder = { '5h': 0, weekly: 1 };
-  for (const g of d.quotaGroups || []) {
-    const rawName = String(g.displayName || '').trim().toLowerCase();
-    const title = formatGroupTitle(g.displayName);
-    const descMatch = String(g.description || '').match(/models within this group:\s*([^\n.]+)/i);
-    const modelsInGroup = descMatch ? descMatch[1].toLowerCase() : '';
-    let q5h = '--%';
-    let qWk = '--%';
-
-    // Weekly exhaustion overrides 5h; zero is not a missing window.
-    const knownBuckets = (g.buckets || []).filter(b => Number.isFinite(b.remainingFraction));
-    const weeklyBucket = knownBuckets.find(b => b.window === 'weekly');
-    const activeBucket = knownBuckets.find(b => b.window === '5h') || weeklyBucket;
-    const activeFraction = weeklyBucket && Math.round(weeklyBucket.remainingFraction * 100) <= 0 ? 0 : activeBucket?.remainingFraction;
-    const activeColor = activeBucket
-      ? quotaColor(activeFraction)
-      : 'var(--muted-foreground, #8e8e93)';
-    quotaHtml += '<div class="dk-q-group" data-pool="' + escapeHtml(rawName) + '">';
-    quotaHtml += '<div class="dk-q-title">' + escapeHtml(title) + '<span class="dk-q-active" style="color:' + activeColor + '" aria-hidden="true"></span></div>';
-    const buckets = [...(g.buckets || [])].sort(
-      (a, b) => (windowOrder[a.window] ?? 2) - (windowOrder[b.window] ?? 2)
-    );
-    for (const b of buckets) {
-      const baseLabel =
-        b.window === 'weekly'
-          ? 'Weekly'
-          : b.window === '5h'
-            ? '5 Hours'
-            : String(b.displayName || b.window || '')
-                .replace(/\s*limit\b/gi, '')
-                .replace(/\b5h(?:ours)?\b/gi, '5 Hours')
-                .trim();
-      const resetShort = formatReset(b.resetTime, d.prefs);
-      const pctLeft = Math.round((b.remainingFraction || 0) * 100);
-      const pctStr = pctLeft + '%';
-
-      if (b.window === '5h') q5h = pctStr;
-      if (b.window === 'weekly') qWk = pctStr;
-
-      quotaHtml += '<div class="dk-q-row" data-quota-tooltip="' + escapeHtml(JSON.stringify({ pool: title, window: b.window, displayName: b.displayName, remainingFraction: b.remainingFraction, resetTime: b.resetTime })) + '">';
-      const labelKey = b.window === 'weekly' ? 'weekly' : b.window === '5h' ? 'fiveHours' : '';
-      const color = quotaColor(pctLeft / 100);
-      const indicator = appearance(d.prefs).quotaIndicator === 'bar'
-        ? '<span class="dk-q-meter"><span style="width:' + Math.max(0, Math.min(100, pctLeft)) + '%;background:' + color + '"></span></span>'
-        : makeRingSvg(b.remainingFraction);
-      quotaHtml += '  <span class="dk-q-label"' + (labelKey ? ' data-i18n="' + labelKey + '"' : '') + '>' + escapeHtml(baseLabel) + '</span>';
-      quotaHtml += '  <span class="dk-q-right"><span class="dk-q-pct notranslate" translate="no">' + pctLeft + '%</span>' + indicator + '</span>';
-      quotaHtml += '  <span class="dk-q-mid notranslate" translate="no">' + escapeHtml(resetShort) + '</span>';
-      quotaHtml += '</div>';
+  const groups = d.quotaGroups || [];
+  let quotaSummaryGroups;
+  let quotaHtml;
+  if (groups.length === 0) {
+    quotaSummaryGroups = [];
+    quotaHtml = '<div class="dk-panel-content"></div>';
+  } else {
+    const isBar = appearance(d.prefs).quotaIndicator === 'bar';
+    const windowOrder = { '5h': 0, weekly: 1 };
+    const keyParts = [isBar ? 'bar' : 'ring'];
+    for (const g of groups) {
+      keyParts.push(String(g.displayName || ''), String(g.description || ''));
+      for (const b of g.buckets || []) {
+        keyParts.push(String(b.window || ''), String(b.displayName || ''), String(b.remainingFraction ?? ''), String(b.resetTime || ''), formatReset(b.resetTime, d.prefs));
+      }
     }
-    quotaHtml += '</div>';
-    quotaSummaryGroups.push({ title, rawName, modelsInGroup, q5h, qWk });
+    const qKey = keyParts.join('\x1f');
+    const memo = toView._qMemo || (toView._qMemo = { key: '', summary: [], html: '' });
+    if (memo.key === qKey) {
+      quotaSummaryGroups = memo.summary;
+      quotaHtml = memo.html;
+    } else {
+      quotaSummaryGroups = [];
+      quotaHtml = '<div class="dk-panel-content">';
+      for (const g of groups) {
+        const rawName = String(g.displayName || '').trim().toLowerCase();
+        const title = formatGroupTitle(g.displayName);
+        const descMatch = String(g.description || '').match(/models within this group:\s*([^\n.]+)/i);
+        const modelsInGroup = descMatch ? descMatch[1].toLowerCase() : '';
+        let q5h = '--%';
+        let qWk = '--%';
+        const activeColor = activeGroupColor(g.buckets, 'var(--agc-muted)');
+        quotaHtml += '<div class="dk-q-group" data-pool="' + escapeHtml(rawName) + '">';
+        quotaHtml += '<div class="dk-q-title-row"><span class="dk-q-title">' + escapeHtml(title) + '</span><span class="dk-q-active"><span class="dk-q-active-dot" style="background:' + activeColor + '" aria-hidden="true"></span><span data-i18n="active">Active</span></span></div>';
+        const buckets = [...(g.buckets || [])].sort((a, b) => (windowOrder[a.window] ?? 2) - (windowOrder[b.window] ?? 2));
+        for (const b of buckets) {
+          const baseLabel = formatBucketLabel(b);
+          const resetShort = formatReset(b.resetTime, d.prefs);
+          const pctLeft = Math.round((b.remainingFraction || 0) * 100);
+          const pctStr = pctLeft + '%';
+          if (b.window === '5h') q5h = pctStr;
+          if (b.window === 'weekly') qWk = pctStr;
+          const rowTone = pctLeft <= 10 ? ' data-tone="danger"' : pctLeft <= 25 ? ' data-tone="warn"' : '';
+          quotaHtml += '<div class="dk-q-row"' + rowTone + ' data-quota-tooltip="' + escapeHtml(JSON.stringify({ pool: title, window: b.window, displayName: b.displayName, remainingFraction: b.remainingFraction, resetTime: b.resetTime })) + '">';
+          const labelKey = b.window === 'weekly' ? 'weekly' : b.window === '5h' ? 'fiveHours' : '';
+          const color = quotaColor(pctLeft / 100);
+          const indicator = isBar
+            ? '<span class="dk-q-meter"><span style="width:' + Math.max(0, Math.min(100, pctLeft)) + '%;background:' + color + '"></span></span>'
+            : makeRingSvg(b.remainingFraction, 16);
+          quotaHtml += '<span class="dk-q-label"' + (labelKey ? ' data-i18n="' + labelKey + '"' : '') + '>' + escapeHtml(baseLabel) + '</span>';
+          quotaHtml += '<span class="dk-q-right">' + indicator + '<span class="dk-q-pct notranslate" translate="no">' + pctLeft + '%</span></span>';
+          quotaHtml += '<span class="dk-q-mid notranslate" translate="no">' + escapeHtml(resetShort) + '</span></div>';
+        }
+        quotaHtml += '</div>';
+        quotaSummaryGroups.push({ title, rawName, modelsInGroup, q5h, qWk });
+      }
+      quotaHtml += '</div>';
+      memo.key = qKey;
+      memo.summary = quotaSummaryGroups;
+      memo.html = quotaHtml;
+    }
   }
 
-  quotaHtml += '</div>';
   return {
     prefs: d.prefs || { language: 'en' },
     generation: d.generation || null,
@@ -1329,34 +1504,30 @@ function toView(d) {
     turnMetrics: d.turnMetrics || null,
     requestError: d.requestError || { kind: 'none' },
     cloudPaygo: d.cloudPaygo === true,
-    cache: { contextTokens: ctx, cachedIn: cached, lastStepEpochMs: d.lastStepEpochMs || 0 },
-    contextData: { contextTokens: ctx, maxContextTokens: maxCtx, cachedIn: cached, uncachedIn: d.uncachedIn, turn0Tokens: turn0, totalOutputTokens: out, totalThinkingTokens: think },
-    pillCtx: hasMax ? usedPctRound + '%' : (ctx === 0 ? '0%' : '--%'),
+    cache: { contextTokens: bd.ctx, cachedIn: bd.cached, lastStepEpochMs: d.lastStepEpochMs || 0 },
+    contextData: { contextTokens: bd.ctx, maxContextTokens: bd.maxCtx, cachedIn: bd.cached, uncachedIn: d.uncachedIn, turn0Tokens: bd.turn0, totalOutputTokens: bd.out, totalThinkingTokens: bd.think },
+    pillCtx: bd.pillCtx,
     ctxIconColor,
-    usedPctText: hasMax ? usedPctRound + '% used' : (ctx === 0 ? '0% used' : '--% used'),
-    usedFrac: fmtK(ctx) + ' / ' + (hasMax ? fmtK(maxCtx) : '--'),
-    segReadW,
-    segOutW,
-    segThinkW,
-    segTurn0W,
-    cacheIconSvg,
-    cacheValColor,
+    usedFrac: bd.usedFrac,
+    segReadW: bd.segReadW,
+    segOutW: bd.segOutW,
+    segThinkW: bd.segThinkW,
+    segTurn0W: bd.segTurn0W,
+    cacheStatus,
+    cacheHitPct,
+    cacheAge,
     cacheValDeco,
     cacheValOp,
     valCacheHit,
     valCacheHitK,
-    valTurn0Pct: turn0Pct,
-    valTurn0K: fmtColK(turn0),
-    valReadPct: readPct,
-    valReadK: fmtColK(read),
-    valThinkPct: thinkPct,
-    valThinkK: fmtColK(think),
-    valOutPct: outPct,
-    valOutK: fmtColK(out),
-    valRead: readPct + ' · ' + fmtK(read),
-    valOut: outPct + ' · ' + fmtK(out),
-    valThink: thinkPct + ' · ' + fmtK(think),
-    valTurn0: turn0Pct + ' · ' + fmtK(turn0),
+    valTurn0Pct: bd.turn0Pct,
+    valTurn0K: bd.turn0K,
+    valReadPct: bd.readPct,
+    valReadK: bd.readK,
+    valThinkPct: bd.thinkPct,
+    valThinkK: bd.thinkK,
+    valOutPct: bd.outPct,
+    valOutK: bd.outK,
     quotaSummaryGroups,
     quotaHtml,
     instanceTs: INSTANCE_TS,
@@ -1415,14 +1586,14 @@ function installRuntime(owner, hash) {
 }
 
 export function buildRuntimeBundle(owner = INSTANCE_TS) {
-  const functions = [fmtK, fmtColK, quotaColor, makeRingSvg, formatGroupTitle, toView, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
-  const source = getPresentationScript() + '\n' + functions;
+  const functions = [detectHostTheme, toView, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
+  const source = DECK_SKIN_CSS + '\n' + getPresentationScript() + '\n' + functions;
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
-  const code = `(()=>{const INSTANCE_TS=${Number(owner)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${getPresentationScript()}\nconst {escapeHtml,formatTokens,appearance,formatReset,cacheView}=globalThis.__agyCapsulePresentation;\n${functions}\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;
+  const code = `(()=>{const INSTANCE_TS=${Number(owner)};const DECK_SKIN_CSS=${JSON.stringify(DECK_SKIN_CSS)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${getPresentationScript()}\nconst {escapeHtml,appearance,formatReset,cacheView,quotaColor,makeRingSvg,formatGroupTitle,formatBucketLabel,activeGroupColor,contextBreakdown}=globalThis.__agyCapsulePresentation;\n${functions}\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;
   return { code, hash };
 }
 
-export { pageMount, toView };
+export { pageMount, toView, detectHostTheme };
 
 export function startDeckInjector(inspect, options = {}) {
   const owner = options.instanceTs ?? INSTANCE_TS;

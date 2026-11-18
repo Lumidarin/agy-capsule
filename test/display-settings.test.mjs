@@ -378,7 +378,7 @@ test('context breakdown and turn metrics each switch between columns and rows, w
   assert.doesNotMatch(UI_HTML + deck, /rowMarker|row-marker/);
   assert.match(UI_HTML, /data-pick-value="columns" data-pick-label="layoutColumns"><span class="seg-ico seg-ico-cols"/);
   assert.match(UI_HTML, /\.setting-seg \{[^}]*border-radius: 6px;/);
-  assert.match(UI_HTML, /\.setting-seg-opt\[data-active="true"\] \{[^}]*color: #4ea84e; \}/);
+  assert.match(UI_HTML, /\.setting-seg-opt\[data-active="true"\] \{[^}]*color: var\(--agc-good\); \}/);
   assert.doesNotMatch(UI_HTML, /setting-chip|setting-opts-sub/);
 });
 

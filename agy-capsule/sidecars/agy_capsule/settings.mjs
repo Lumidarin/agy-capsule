@@ -1,11 +1,13 @@
 import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { UI_SKINS, DEFAULT_UI_SKIN } from './ui_skins.mjs';
 
-export const DEFAULT_SETTINGS = Object.freeze({ language: 'en', settingsLanguage: 'zh-CN', panelLayout: 'natural', density: 'compact', quotaIndicator: 'ring', labelCase: 'lowercase', resetFormat: 'compact', contextLayout: 'columns', turnLayout: 'columns', contextMarker: 'square', turnMarker: 'square', showContextBreakdown: true, columnLabel: true, columnValue: true, columnPercent: false, columnOrder: 'label,value,percent', highlightActiveModel: false, hideUnavailableQuota: true, showCacheWarnings: true, showContextWarnings: true, showRequestErrors: true, showSpeed: true, speedAnimation: false, showRequestMetrics: true, showTurnMetrics: false });
+export const DEFAULT_SETTINGS = Object.freeze({ language: 'en', settingsLanguage: 'zh-CN', uiSkin: DEFAULT_UI_SKIN, panelLayout: 'natural', density: 'compact', quotaIndicator: 'ring', labelCase: 'lowercase', resetFormat: 'compact', contextLayout: 'columns', turnLayout: 'columns', contextMarker: 'square', turnMarker: 'square', showContextBreakdown: true, columnLabel: true, columnValue: true, columnPercent: false, columnOrder: 'label,value,percent', highlightActiveModel: false, hideUnavailableQuota: true, showCacheWarnings: true, showContextWarnings: true, showRequestErrors: true, showSpeed: true, speedAnimation: false, showRequestMetrics: true, requestPosition: 'bottom', showTurnMetrics: false });
 const choices = {
   language: ['en', 'zh-CN', 'zh-TW'],
   settingsLanguage: ['en', 'zh-CN', 'zh-TW'],
+  uiSkin: UI_SKINS,
   panelLayout: ['natural', 'matched'],
   density: ['compact', 'standard', 'spacious'],
   quotaIndicator: ['ring', 'bar'],
@@ -28,6 +30,7 @@ const choices = {
   showSpeed: [true, false],
   speedAnimation: [true, false],
   showRequestMetrics: [true, false],
+  requestPosition: ['bottom', 'top'],
   showTurnMetrics: [true, false],
 };
 
@@ -54,8 +57,8 @@ export function createSettingsStore(filePath = join(homedir(), '.gemini', 'confi
   let lastStat = '';
   function read() {
     try {
-      const stat = statSync(filePath);
-      const key = `${stat.mtimeMs}:${stat.size}`;
+      const stat = statSync(filePath, { bigint: true });
+      const key = `${stat.ino}:${stat.mtimeNs}:${stat.size}`;
       if (key !== lastStat) {
         const raw = JSON.parse(readFileSync(filePath, 'utf8'));
         cached = normalizeSettings(raw);

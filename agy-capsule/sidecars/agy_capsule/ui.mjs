@@ -5,7 +5,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
   const dictionaries = {
     en: {
       cache: 'Cache', turn0: 'Turn0', read: 'Read', think: 'Think', write: 'Write',
-      used: 'used', fiveHours: '5 Hours', weekly: 'Weekly', soon: 'soon', active: 'Active',
+      ctxTitle: 'Context', used: 'used', fiveHours: '5 Hours', weekly: 'Weekly', soon: 'soon', active: 'Active',
       settings: 'Display settings', language: "Display language",
       cdpTitle: 'Footer capsule is off',
       cdpBody: "agy-capsule can't reach Antigravity's debugging port, so it can't show the capsule under the input box. Newer Antigravity versions don't open this port by default. Sidebar stats still work.",
@@ -25,10 +25,10 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       detail_auth_error: 'The request failed authentication or permission checks. Check sign-in and account access.',
       detail_service_unavailable: 'The model service is temporarily unavailable. Retry later or switch models.',
       detail_unknown: 'The model request failed, but the reported information does not identify a known cause.',
-      showSpeed: 'Generation speed', showRequestMetrics: 'Last request',
+      showSpeed: 'Generation speed', showRequestMetrics: 'Last request', requestPosition: 'Last request position', requestPosTop: 'Top', requestPosBottom: 'Bottom',
       speedAnimation: 'Effects',
       saveFailed: 'Could not save. Please try again.',
-      newChat: 'New conversation', cached: 'cached',
+      newChat: 'New conversation', cached: 'cached', cacheExpiredTag: 'expired',
       cachedInput: 'Cached input', lastActivity: 'Last recorded activity', cacheWarning: 'Approaching the 4m reminder threshold', cacheCold: '4m threshold reached; cache may be cold',
       context: 'Context details', quota: 'Model quotas',
       contextUsed: 'Used', contextLimit: 'Limit', contextRemaining: 'Remaining', uncachedInput: 'Uncached input', ofLimit: '{pct} of context limit', resetAt: 'Resets', resetUnknown: 'Reset time not reported',
@@ -37,15 +37,18 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       readTip: 'Added context input (user messages, read files, and tool outputs).',
       writeTip: 'Prior model replies and tool calls kept in current context (excludes latest reply).',
       thinkTip: 'Prior model thinking kept in current context (excludes latest reply).',
-      output: "Total output", reply: 'Response / tool calls', thinking: 'Thinking',
+      output: "Total output", outputShort: 'Output', reply: 'Response / tool calls', thinking: 'Thinking',
       totalTime: "Request duration", streamTime: 'Stream',
+      formulaSpeed: 'Speed', formulaStream: 'Stream', formulaStreamPart: 'Stream', formulaOut: 'Out', formulaTtft: 'TTFT', formulaTotal: 'Total',
       speedTip: "Generation speed = total output ÷ request duration (TTFT + stream).",
+      streamSpeedTip: "Stream speed = total output ÷ stream time (excludes TTFT). Click to switch.",
       outputTip: "Output of latest request",
       ttftTip: "First-token wait to total duration of the latest request.",
       totalTimeTip: "Request duration (TTFT + stream); excludes tool execution.",
       appearanceSection: 'Appearance', featuresSection: 'Features',
+      uiSkin: 'UI skin', frostedSkin: 'Frosted', nativeSkin: 'Native',
       speedPairTip: 'Capsule speed: last completed request in the current turn (— until ready). Effects: breathing dot while running; holds speed color 15s after stopping (≥25 green, 10–25 yellow, <10 red).',
-      requestSectionTip: 'Shows Last request (TTFT–total duration and generation speed of the latest recorded call) in panels. Independent of capsule speed.',
+      requestSectionTip: 'Shows Last request (cache, TTFT–total duration, and generation speed of the latest call). Top / Bottom moves this section—or the Cache line when disabled—in panels.',
       turnSectionTip: 'Aggregates requests, elapsed wall time, write, and thinking tokens from your latest user message to completion.',
       panelLayout: 'Panel height', naturalLayout: 'Natural', matchedLayout: 'Matched',
       density: 'Panel spacing', compact: 'Compact', standard: 'Standard', spacious: 'Spacious',
@@ -58,7 +61,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     },
     'zh-CN': {
       cache: '缓存', turn0: '首轮', read: '读取', think: '思考', write: '写入',
-      used: '已用', fiveHours: '5小时', weekly: '每周', soon: '即将重置', active: '当前',
+      ctxTitle: '上下文', used: '已用', fiveHours: '5小时', weekly: '每周', soon: '即将重置', active: '当前',
       settings: '显示设置', language: "显示语言",
       cdpTitle: '底栏胶囊未启用',
       cdpBody: '插件连不上 Antigravity 的调试端口，无法在输入框下方显示胶囊。新版 Antigravity 默认不开这个端口。侧栏统计不受影响。',
@@ -78,10 +81,10 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       detail_auth_error: '本次请求未通过验证或权限检查，请检查登录状态和账号权限。',
       detail_service_unavailable: '模型服务暂不可用，可稍后重试或切换其他模型。',
       detail_unknown: '本次模型请求失败，但报告的信息不足以识别已知原因。',
-      showSpeed: '生成速度', showRequestMetrics: '最近请求',
+      showSpeed: '生成速度', showRequestMetrics: '最近请求', requestPosition: '最近请求位置', requestPosTop: '顶部', requestPosBottom: '底部',
       speedAnimation: '动效',
       saveFailed: '保存失败，请重试。',
-      newChat: '新对话', cached: '缓存',
+      newChat: '新对话', cached: '缓存', cacheExpiredTag: '已过期',
       cachedInput: '缓存输入', lastActivity: '最近记录距今', cacheWarning: '接近 4 分钟提醒阈值', cacheCold: '已达 4 分钟阈值，缓存可能已冷却',
       context: '上下文明细', quota: '模型配额',
       contextUsed: '已用', contextLimit: '上限', contextRemaining: '剩余', uncachedInput: '非缓存输入', ofLimit: '占上限 {pct}', resetAt: '重置时间', resetUnknown: '未提供重置时间',
@@ -90,15 +93,18 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       readTip: '对话中新增的输入内容，包括用户消息、读取的文件与工具返回结果。',
       writeTip: '留在当前上下文中的累计回复与工具调用（不含最近一次生成）。',
       thinkTip: '留在当前上下文中的累计思考输出（不含最近一次生成）。',
-      output: "总输出", reply: '回复/调用', thinking: '思考',
+      output: "总输出", outputShort: '输出', reply: '回复/调用', thinking: '思考',
       totalTime: "请求耗时", streamTime: '流式耗时',
+      formulaSpeed: '生成速率', formulaStream: '流式速率', formulaStreamPart: '流式', formulaOut: '产出', formulaTtft: '首字', formulaTotal: '总耗时',
       speedTip: "生成速度 = 总输出 ÷ 单次请求总耗时（首字等待 + 流式输出）。",
+      streamSpeedTip: "纯流式速度 = 总输出 ÷ 流式输出耗时（不含首字等待），点击切换。",
       outputTip: "最近一次请求输出",
       ttftTip: "首字等待耗时 – 单次请求总耗时（已包含首字等待）。",
       totalTimeTip: "请求总耗时（首字等待 + 流式输出，不含工具执行）。",
       appearanceSection: '外观', featuresSection: '功能',
+      uiSkin: '面板风格', frostedSkin: '磨砂', nativeSkin: '原生',
       speedPairTip: '底栏速度：本轮最近一次已完成请求的速度（未完成显示 —）。动效：运行中圆点呼吸，结束后保色 15 秒再变灰（≥25 绿、10–25 黄、<10 红）。',
-      requestSectionTip: '在面板展示最近一次请求的 TTFT–总耗时与生成速度，与底栏胶囊独立。',
+      requestSectionTip: '在面板展示最近一次请求的缓存、TTFT–总耗时与生成速度；顶部 / 底部同时控制该区（或关闭时的单行缓存）位置，与底栏胶囊独立。',
       turnSectionTip: '从最近一条用户消息到结束，按整轮累计请求数、耗时、写入与思考。',
       panelLayout: '面板高度', naturalLayout: '自然高度', matchedLayout: '对齐高度',
       density: '面板间距', compact: '紧凑', standard: '标准', spacious: '舒展',
@@ -111,7 +117,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     },
     'zh-TW': {
       cache: '快取', turn0: '首輪', read: '讀取', think: '思考', write: '寫入',
-      used: '已用', fiveHours: '5小時', weekly: '每週', soon: '即將重設', active: '目前',
+      ctxTitle: '上下文', used: '已用', fiveHours: '5小時', weekly: '每週', soon: '即將重設', active: '目前',
       settings: '顯示設定', language: "顯示語言",
       cdpTitle: '底欄膠囊未啟用',
       cdpBody: '外掛連不上 Antigravity 的偵錯連接埠，無法在輸入框下方顯示膠囊。新版 Antigravity 預設不開這個連接埠。側欄統計不受影響。',
@@ -131,10 +137,10 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       detail_auth_error: '本次請求未通過驗證或權限檢查，請檢查登入狀態和帳號權限。',
       detail_service_unavailable: '模型服務暫不可用，可稍後重試或切換其他模型。',
       detail_unknown: '本次模型請求失敗，但回報的資訊不足以識別已知原因。',
-      showSpeed: '生成速度', showRequestMetrics: '最近請求',
+      showSpeed: '生成速度', showRequestMetrics: '最近請求', requestPosition: '最近請求位置', requestPosTop: '頂部', requestPosBottom: '底部',
       speedAnimation: '動效',
       saveFailed: '儲存失敗，請重試。',
-      newChat: '新對話', cached: '快取',
+      newChat: '新對話', cached: '快取', cacheExpiredTag: '已過期',
       cachedInput: '快取輸入', lastActivity: '最近記錄距今', cacheWarning: '接近 4 分鐘提醒閾值', cacheCold: '已達 4 分鐘閾值，快取可能已冷卻',
       context: '上下文明細', quota: '模型配額',
       contextUsed: '已用', contextLimit: '上限', contextRemaining: '剩餘', uncachedInput: '非快取輸入', ofLimit: '佔上限 {pct}', resetAt: '重設時間', resetUnknown: '未提供重設時間',
@@ -143,15 +149,18 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       readTip: '對話中新增的輸入內容，包括使用者訊息、讀取的檔案與工具回傳結果。',
       writeTip: '留在目前上下文中的累計回覆與工具呼叫（不含最近一次生成）。',
       thinkTip: '留在目前上下文中的累計思考輸出（不含最近一次生成）。',
-      output: "總輸出", reply: '回覆/呼叫', thinking: '思考',
+      output: "總輸出", outputShort: '輸出', reply: '回覆/呼叫', thinking: '思考',
       totalTime: "請求耗時", streamTime: '串流耗時',
+      formulaSpeed: '生成速率', formulaStream: '串流速率', formulaStreamPart: '串流', formulaOut: '產出', formulaTtft: '首字', formulaTotal: '總耗時',
       speedTip: "生成速度 = 總輸出 ÷ 單次請求總耗時（首字等待 + 串流輸出）。",
+      streamSpeedTip: "純串流速度 = 總輸出 ÷ 串流輸出耗時（不含首字等待），點擊切換。",
       outputTip: "最近一次請求輸出",
       ttftTip: "首字等待耗時 – 單次請求總耗時（已包含首字等待）。",
       totalTimeTip: "請求總耗時（首字等待 + 串流輸出，不含工具執行）。",
       appearanceSection: '外觀', featuresSection: '功能',
+      uiSkin: '面板風格', frostedSkin: '磨砂', nativeSkin: '原生',
       speedPairTip: '底欄速度：本輪最近一次已完成請求的速度（未完成顯示 —）。動效：執行中圓點呼吸，結束後保色 15 秒再變灰（≥25 綠、10–25 黃、<10 紅）。',
-      requestSectionTip: '於面板展示最近一次請求的 TTFT–總耗時與生成速度，與底欄膠囊獨立。',
+      requestSectionTip: '於面板展示最近一次請求的快取、TTFT–總耗時與生成速度；頂部 / 底部同時控制該區（或關閉時的單行快取）位置，與底欄膠囊獨立。',
       turnSectionTip: '從最近一條使用者訊息到結束，依整輪累計請求數、耗時、寫入與思考。',
       panelLayout: '面板高度', naturalLayout: '自然高度', matchedLayout: '對齊高度',
       density: '面板間距', compact: '緊湊', standard: '標準', spacious: '舒展',
@@ -163,6 +172,11 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       resetDay: '{n}天', resetHour: '{n}小時', resetMinute: '{n}分', resetMinuteOnly: '{n}分鐘', resetJoin: '',
     },
   };
+  let cachedTimeZone = '';
+  function getTimeZone() {
+    if (!cachedTimeZone) cachedTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return cachedTimeZone;
+  }
   function locale(prefs = {}, candidates = []) {
     if (dictionaries[prefs.language]) return prefs.language;
     for (const raw of candidates) {
@@ -189,6 +203,102 @@ export function createPresentation(turnFactory = createTurnPresentation) {
   }
   const { dictionaries: turnDictionaries, ...turnMethods } = turnFactory(formatTokens);
   for (const language of Object.keys(dictionaries)) Object.assign(dictionaries[language], turnDictionaries[language]);
+
+  function quotaColor(frac) {
+    const pctLeft = Math.round(Math.max(0, Math.min(1, Number(frac || 0))) * 100);
+    return pctLeft <= 10 ? 'var(--agc-danger)' : pctLeft <= 25 ? 'var(--agc-warn)' : 'var(--agc-good)';
+  }
+  function makeRingSvg(frac, size = 16) {
+    const clamped = Math.max(0, Math.min(1, Number(frac || 0)));
+    const r = 6.5;
+    const c = 2 * Math.PI * r;
+    const offset = c * (1 - clamped);
+    const color = quotaColor(clamped);
+    return `<svg width="${size}" height="${size}" viewBox="0 0 18 18" style="transform: rotate(-90deg); flex-shrink: 0;"><circle cx="9" cy="9" r="${r}" fill="none" stroke="var(--agc-ring-track, rgba(142,142,147,0.28))" stroke-width="2.2"/><circle cx="9" cy="9" r="${r}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"/></svg>`;
+  }
+  function formatGroupTitle(raw) {
+    const s = String(raw || '').trim();
+    if (s === 'Gemini Models') return 'Gemini';
+    if (s.toLowerCase().startsWith('claude')) return 'Claude';
+    return s;
+  }
+  function formatBucketLabel(b, labels = null) {
+    if (b.window === 'weekly') return labels ? labels.weekly : 'Weekly';
+    if (b.window === '5h') return labels ? labels.fiveHours : '5 Hours';
+    return String(b.displayName || b.window || '').replace(/\s*limit\b/gi, '').replace(/\b5h(?:ours)?\b/gi, '5 Hours').trim();
+  }
+  function activeGroupColor(buckets, fallback = 'var(--agc-muted)') {
+    const known = (buckets || []).filter(b => Number.isFinite(b.remainingFraction));
+    const weekly = known.find(b => b.window === 'weekly');
+    const active = known.find(b => b.window === '5h') || weekly;
+    if (!active) return fallback;
+    const frac = weekly && Math.round(weekly.remainingFraction * 100) <= 0 ? 0 : active.remainingFraction;
+    return quotaColor(frac);
+  }
+  function matchActiveGroup(modelText, g) {
+    const mt = String(modelText || '').toLowerCase();
+    if (!mt) return false;
+    const rawName = String(g.displayName || '').trim().toLowerCase();
+    const titleLower = formatGroupTitle(g.displayName).toLowerCase();
+    const descMatch = String(g.description || '').match(/models within this group:\s*([^\n.]+)/i);
+    const modelsInGroup = descMatch ? descMatch[1].toLowerCase() : '';
+    if (modelsInGroup && modelsInGroup.split(',').some(tok => { const m = tok.trim(); return m && mt.includes(m); })) return true;
+    if (mt.includes('gemini') && rawName.includes('gemini')) return true;
+    if ((mt.includes('claude') || mt.includes('gpt-oss')) && (rawName.includes('claude') || rawName.includes('gpt'))) return true;
+    return Boolean((rawName && mt.includes(rawName)) || (titleLower && mt.includes(titleLower)));
+  }
+  function contextBreakdown(d = {}) {
+    const maxCtx = d.maxContextTokens || 0;
+    const ctx = d.contextTokens || 0;
+    const cached = d.cachedIn || 0;
+    const out = d.totalOutputTokens || 0;
+    const think = d.totalThinkingTokens || 0;
+    const turn0 = d.turn0Tokens || 0;
+    const read = Math.max(0, ctx - turn0 - out - think);
+    const hasMax = maxCtx > 0;
+    const usedPct = hasMax ? Math.round((ctx / maxCtx) * 100) : 0;
+    const usedPctExact = hasMax ? Math.min(100, (ctx / maxCtx) * 100) : 0;
+    const compSum = read + out + think + turn0;
+    const scale = compSum > 0 ? usedPctExact / compSum : 0;
+    const pctStr = val => hasMax ? Math.round((val / maxCtx) * 100) + '%' : (ctx === 0 ? '0%' : '--%');
+    return {
+      maxCtx, ctx, cached, out, think, turn0, read, hasMax, usedPct,
+      pillCtx: hasMax ? usedPct + '%' : (ctx === 0 ? '0%' : '--%'),
+      usedFrac: formatTokens(ctx) + ' / ' + (hasMax ? formatTokens(maxCtx) : '--'),
+      segReadW: (read * scale).toFixed(2) + '%',
+      segOutW: (out * scale).toFixed(2) + '%',
+      segThinkW: (think * scale).toFixed(2) + '%',
+      segTurn0W: (turn0 * scale).toFixed(2) + '%',
+      readPct: pctStr(read),
+      outPct: pctStr(out),
+      thinkPct: pctStr(think),
+      turn0Pct: pctStr(turn0),
+      readK: formatTokens(read),
+      outK: formatTokens(out),
+      thinkK: formatTokens(think),
+      turn0K: formatTokens(turn0),
+    };
+  }
+  function renderCacheRing(ringEl, arcEl, status, hitPctRaw) {
+    const hitPct = Math.max(0, Math.min(100, Number(hitPctRaw || 0)));
+    if (ringEl) {
+      const iconState = status === 'cold' ? 'expired' : status === 'warning' ? 'warning' : hitPct > 0 ? 'warm' : 'idle';
+      if (ringEl.dataset.iconState !== iconState) ringEl.dataset.iconState = iconState;
+    }
+    if (arcEl) {
+      const ringC = 2 * Math.PI * 4.5;
+      const showArc = hitPct > 0;
+      const dashLen = hitPct >= 98 ? ringC : Math.max(0.6, (hitPct / 100) * ringC - 1.5);
+      const disp = showArc ? '' : 'none';
+      const op = status === 'cold' ? '0.82' : '1';
+      const dash = showArc ? `${dashLen.toFixed(2)} ${ringC.toFixed(2)}` : `0 ${ringC.toFixed(2)}`;
+      const cap = showArc && hitPct < 98 ? 'round' : 'butt';
+      if (arcEl.style.display !== disp) arcEl.style.display = disp;
+      if (arcEl.style.opacity !== op) arcEl.style.opacity = op;
+      if (arcEl.getAttribute('stroke-dasharray') !== dash) arcEl.setAttribute('stroke-dasharray', dash);
+      if (arcEl.getAttribute('stroke-linecap') !== cap) arcEl.setAttribute('stroke-linecap', cap);
+    }
+  }
   function cacheTooltip(data = {}, t = dictionaries.en, nowMs = Date.now(), prefs = {}) {
     const context = Number(data.contextTokens) || 0;
     if (context <= 0) return `0 / 0 ${t.cached} · ${t.newChat}`;
@@ -204,27 +314,32 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     const ctx = data.contextTokens || 0;
     const cached = data.cachedIn || 0;
     const hitPct = ctx > 0 ? Math.round((cached / ctx) * 100) : 0;
+    const timestamp = Number(data.lastStepEpochMs);
+    const hasActivity = ctx > 0 && Number.isFinite(timestamp) && timestamp > 0;
+    const rawIdleSec = hasActivity ? Math.max(0, Math.floor((nowMs - timestamp) / 1000)) : 0;
+    const mins = hasActivity ? Math.floor(rawIdleSec / 60) : null;
+    const age = mins === null ? '' : mins < 1 ? '<1m' : mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h${mins % 60 ? ` ${mins % 60}m` : ''}`;
     const warn = prefs?.showCacheWarnings !== false;
-    const idleSec = warn && ctx > 0 && data.lastStepEpochMs ? Math.max(0, Math.floor((nowMs - data.lastStepEpochMs) / 1000)) : 0;
+    const idleSec = warn && hasActivity ? rawIdleSec : 0;
     if (idleSec >= 240) {
       return {
-        status: 'cold',
-        iconSvg: '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#e06c75" stroke-width="2" stroke-linecap="round"><line x1="2.2" y1="2.2" x2="9.8" y2="9.8"/><line x1="9.8" y1="2.2" x2="2.2" y2="9.8"/></svg>',
+        status: 'cold', hitPct, age,
+        iconSvg: '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#ff4d45" stroke-width="2" stroke-linecap="round"><line x1="2.2" y1="2.2" x2="9.8" y2="9.8"/><line x1="9.8" y1="2.2" x2="2.2" y2="9.8"/></svg>',
         valColor: '', valDeco: 'line-through', valOp: '0.5', text: hitPct + '%', countdown: '',
-        ctxIconColor: 'rgba(208, 122, 128, 0.88)',
+        ctxIconColor: 'rgba(255, 77, 69, 0.88)',
       };
     }
     if (idleSec >= 180) {
       const remMin = Math.max(1, Math.ceil((240 - idleSec) / 60));
       return {
-        status: 'warning',
-        iconSvg: '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#d4940a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="4.8"/><polyline points="6 3.5 6 6 7.8 7.2"/></svg>',
-        valColor: '#d4940a', valDeco: 'none', valOp: '1', text: hitPct + '%', countdown: '~' + remMin + 'm',
-        ctxIconColor: 'rgba(206, 168, 92, 0.88)',
+        status: 'warning', hitPct, age,
+        iconSvg: '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#f5a524" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="4.8"/><polyline points="6 3.5 6 6 7.8 7.2"/></svg>',
+        valColor: '#f5a524', valDeco: 'none', valOp: '1', text: hitPct + '%', countdown: '~' + remMin + 'm',
+        ctxIconColor: 'rgba(245, 165, 36, 0.88)',
       };
     }
     return {
-      status: 'fresh',
+      status: 'fresh', hitPct, age,
       iconSvg: '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 6.5 4.8 9.2 10 3"/></svg>',
       valColor: '', valDeco: 'none', valOp: '1', text: hitPct + '%', countdown: '',
       ctxIconColor: '',
@@ -246,17 +361,25 @@ export function createPresentation(turnFactory = createTurnPresentation) {
   }
   function renderContextTooltips(root, data, t) {
     const tips = contextTooltips(data, t);
-    for (const node of root.querySelectorAll('[data-context-tip]')) node.title = tips[node.dataset.contextTip];
+    for (const node of root.querySelectorAll('[data-context-tip]')) {
+      const next = tips[node.dataset.contextTip];
+      if (node.title !== next) node.title = next;
+    }
   }
   function quotaTooltip(data, t = dictionaries.en) {
     const date = data.resetTime ? new Date(data.resetTime) : null;
     const pad = n => String(n).padStart(2, '0');
     return date && Number.isFinite(date.getTime())
-      ? `${t.resetAt} ${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`
+      ? `${t.resetAt} ${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())} (${getTimeZone()})`
       : t.resetUnknown;
   }
   function applyQuotaTooltips(root, t) {
-    for (const row of root.querySelectorAll('[data-quota-tooltip]')) row.title = quotaTooltip(JSON.parse(row.dataset.quotaTooltip), t);
+    for (const row of root.querySelectorAll('[data-quota-tooltip]')) {
+      const raw = row.dataset.quotaTooltip;
+      const parsed = row._quotaTipRaw === raw && row._quotaTipObj ? row._quotaTipObj : (row._quotaTipRaw = raw, row._quotaTipObj = JSON.parse(raw));
+      const tip = quotaTooltip(parsed, t);
+      if (row.title !== tip) row.title = tip;
+    }
   }
   function alertView(data = {}, prefs = {}, t = dictionaries.en) {
     const kind = data.requestError?.kind || 'none';
@@ -272,38 +395,77 @@ export function createPresentation(turnFactory = createTurnPresentation) {
   }
   function renderAlerts(root, data, prefs, t) {
     const view = alertView(data, prefs, t);
-    root.dataset.contextTone = view.contextTone;
-    if (view.contextTip) for (const node of root.querySelectorAll('[data-context-tip="overview"]')) node.title += '\n' + view.contextTip;
+    if (root.dataset.contextTone !== view.contextTone) root.dataset.contextTone = view.contextTone;
+    if (view.contextTip) {
+      for (const node of root.querySelectorAll('[data-context-tip="overview"]')) {
+        if (!node.title.endsWith(view.contextTip)) node.title += '\n' + view.contextTip;
+      }
+    }
     for (const node of root.querySelectorAll('[data-request-error]')) {
-      node.textContent = view[node.dataset.requestError];
+      const next = view[node.dataset.requestError];
+      if (node.textContent !== next) node.textContent = next;
     }
     const group = root.querySelector('[data-el="grpError"]');
     if (group) {
       group.hidden = !view.visible;
-      group.querySelector('.dk-pill').setAttribute('aria-label', `${t.requestFailure}: ${view.label}`);
-      group.querySelector('.dk-pill').title = [view.label, view.detail, view.diagnostic].filter(Boolean).join('\n');
+      const pill = group.querySelector('.dk-pill');
+      const aria = `${t.requestFailure}: ${view.label}`;
+      const title = [view.label, view.detail, view.diagnostic].filter(Boolean).join('\n');
+      if (pill.getAttribute('aria-label') !== aria) pill.setAttribute('aria-label', aria);
+      if (pill.title !== title) pill.title = title;
     }
     return view;
   }
   function generationText(g = {}, t = dictionaries.en) {
     const seconds = n => n !== null && n !== undefined && Number.isFinite(n) ? n.toFixed(1) + 's' : '—';
+    const fmtSecExact = n => n !== null && n !== undefined && Number.isFinite(Number(n)) ? Number(n).toFixed(Number(n) >= 10 ? 1 : 2) + 's' : '';
     const split = g.reply !== null && g.reply !== undefined && g.thinking !== null && g.thinking !== undefined
       ? `${t.reply} ${formatTokens(g.reply)} + ${t.thinking} ${formatTokens(g.thinking)}` : '';
     const ttft = seconds(g.ttft);
     const totalTime = seconds(g.duration);
+    const streamTime = seconds(g.streaming);
     const timing = ttft !== '—' && totalTime !== '—' ? `${ttft}–${totalTime}` : ttft;
     const outputLine = g.output !== null && g.output !== undefined
       ? `\n${t.outputTip}: ${formatTokens(g.output)} tokens${split ? ` (${split})` : ''}`
       : '';
-    const timingTitle = `${t.ttftTip}\nTTFT ${ttft} · ${t.streamTime} ${seconds(g.streaming)} · ${t.totalTime} ${totalTime}`;
-    const totalTimeTitle = `${t.totalTimeTip}\nTTFT ${ttft} · ${t.streamTime} ${seconds(g.streaming)} · ${t.totalTime} ${totalTime}`;
+    const rawStream = g.streaming !== null && g.streaming !== undefined && Number.isFinite(g.streaming)
+      ? g.streaming
+      : (g.duration !== null && g.duration !== undefined && g.ttft !== null && g.ttft !== undefined
+          ? Math.max(0, Number((g.duration - g.ttft).toFixed(2)))
+          : null);
+    const streamTps = g.output !== null && g.output > 0 && rawStream !== null && rawStream > 0.05 ? g.output / rawStream : g.tps;
+    const tpsNum = g.tps !== null && g.tps !== undefined && Number.isFinite(g.tps) ? g.tps.toFixed(1) : null;
+    const streamTpsNum = streamTps !== null && streamTps !== undefined && Number.isFinite(streamTps) ? streamTps.toFixed(1) : null;
+    const outExact = g.output !== null && g.output !== undefined && g.output > 0 ? String(Math.round(g.output)) : '';
+    const ttftExact = fmtSecExact(g.ttft);
+    const streamExact = fmtSecExact(rawStream);
+    const totalExact = fmtSecExact(g.duration);
+    const speedTitle = tpsNum !== null && outExact && ttftExact && streamExact
+      ? `${t.formulaSpeed} ${tpsNum} tok/s = ${t.formulaOut} ${outExact} / (${t.formulaTtft} ${ttftExact} + ${t.formulaStreamPart} ${streamExact})`
+      : tpsNum !== null && outExact && totalExact
+        ? `${t.formulaSpeed} ${tpsNum} tok/s = ${t.formulaOut} ${outExact} / ${t.formulaTotal} ${totalExact}`
+        : [tpsNum !== null ? `${t.formulaSpeed} ${tpsNum} tok/s` : '', ttftExact ? `${t.formulaTtft} ${ttftExact}` : '', totalExact ? `${t.formulaTotal} ${totalExact}` : ''].filter(Boolean).join(' · ') || `${t.speedTip}${outputLine}`;
+    const streamSpeedTitle = streamTpsNum !== null && outExact && streamExact
+      ? `${t.formulaStream} ${streamTpsNum} tok/s = ${t.formulaOut} ${outExact} / ${t.formulaStreamPart} ${streamExact}`
+      : [streamTpsNum !== null ? `${t.formulaStream} ${streamTpsNum} tok/s` : '', streamExact ? `${t.formulaStreamPart} ${streamExact}` : ''].filter(Boolean).join(' · ') || `${t.streamSpeedTip}${outputLine}`;
+    const timingTitle = `${t.ttftTip}\nTTFT ${ttft} · ${t.streamTime} ${streamTime} · ${t.totalTime} ${totalTime}`;
+    const totalTimeTitle = `${t.totalTimeTip}\nTTFT ${ttft} · ${t.streamTime} ${streamTime} · ${t.totalTime} ${totalTime}`;
+    const outputSub = g.thinking !== null && g.thinking !== undefined && g.thinking > 0
+      ? `${t.think} ${formatTokens(g.thinking)}`
+      : g.output !== null && g.output !== undefined ? t.outputShort : '—';
     return {
-      speed: g.tps !== null && g.tps !== undefined ? g.tps.toFixed(1) + ' tok/s' : '—',
+      speed: tpsNum !== null ? tpsNum + ' tok/s' : '—',
+      streamSpeed: streamTpsNum !== null ? streamTpsNum + ' tok/s' : '—',
+      rawTps: g.tps ?? null,
+      rawStreamTps: streamTps ?? null,
       output: formatTokens(g.output),
+      outputSub,
       ttft,
       totalTime,
+      streamTime,
       timing,
-      speedTitle: `${t.speedTip}${outputLine}`,
+      speedTitle,
+      streamSpeedTitle,
       outputTitle: `${t.outputTip}: ${formatTokens(g.output)} tokens${split ? ` (${split})` : ''}`,
       ttftTitle: t.ttftTip,
       totalTimeTitle,
@@ -315,22 +477,79 @@ export function createPresentation(turnFactory = createTurnPresentation) {
   }
   function renderGeneration(root, generation, labels, prefs = {}) {
     const view = generationText(generation || {}, labels);
-    for (const key of ['timing', 'speed']) {
-      for (const node of root.querySelectorAll(`[data-generation="${key}"]`)) {
-        node.hidden = false;
-        if (node.textContent !== view[key]) node.textContent = view[key];
-        if (node.title !== view[key + 'Title']) node.title = view[key + 'Title'];
-      }
-      for (const row of root.querySelectorAll(`[data-generation-row="${key}"]`)) {
-        row.hidden = false;
-        row.title = view[key + 'Title'];
+    const isStream = root?.dataset?.speedMode === 'stream';
+    const speedVal = isStream ? view.streamSpeed : view.speed;
+    const timingVal = isStream && view.streamTime !== '—' ? view.streamTime : view.timing;
+    const speedTipVal = isStream ? view.streamSpeedTitle : view.speedTitle;
+    const timingTipVal = timingVal !== '—' && speedTipVal ? speedTipVal : view.timingTitle;
+    const effTps = isStream ? view.rawStreamTps : view.rawTps;
+    const tier = Number.isFinite(effTps) && effTps >= 0 ? (effTps >= 25 ? 'green' : effTps >= 10 ? 'yellow' : 'red') : '';
+    for (const btn of root.querySelectorAll('[data-el="speedToggle"], #sb-speed-toggle')) {
+      if (btn.title !== speedTipVal) btn.title = speedTipVal;
+      btn.setAttribute?.('aria-pressed', String(isStream));
+    }
+    for (const slot of root.querySelectorAll('[data-el="speedSlot"], #sb-speed-slot')) {
+      const mode = isStream ? 'stream' : 'total';
+      if (slot.dataset.mode !== mode) slot.dataset.mode = mode;
+      if (tier) {
+        if (slot.dataset.tier !== tier) slot.dataset.tier = tier;
+      } else if (slot.dataset.tier) {
+        delete slot.dataset.tier;
       }
     }
-    for (const block of root.querySelectorAll('[data-generation-block]')) block.hidden = prefs.showRequestMetrics === false || !generation || generation.requestIndex == null;
+    for (const node of root.querySelectorAll('[data-generation="timing"]')) {
+      node.hidden = false;
+      if (node.textContent !== timingVal) node.textContent = timingVal;
+      if (node.title !== timingTipVal) node.title = timingTipVal;
+    }
+    for (const node of root.querySelectorAll('[data-generation="speed"]')) {
+      node.hidden = false;
+      if (node.textContent !== speedVal) node.textContent = speedVal;
+      if (node.title !== speedTipVal) node.title = speedTipVal;
+    }
+    for (const row of root.querySelectorAll('[data-generation-row="timing"]')) {
+      row.hidden = false;
+      if (row.title !== timingTipVal) row.title = timingTipVal;
+    }
+    for (const row of root.querySelectorAll('[data-generation-row="speed"]')) {
+      row.hidden = false;
+      if (row.title !== speedTipVal) row.title = speedTipVal;
+    }
+    for (const outNode of root.querySelectorAll('[data-el="footOutVal"]')) {
+      if (outNode.textContent !== view.output) outNode.textContent = view.output;
+      if (outNode.title !== view.outputTitle) outNode.title = view.outputTitle;
+    }
+    for (const subNode of root.querySelectorAll('[data-el="footOutSub"]')) {
+      if (subNode.textContent !== view.outputSub) subNode.textContent = view.outputSub;
+      if (subNode.title !== view.outputTitle) subNode.title = view.outputTitle;
+    }
+    for (const col of root.querySelectorAll('[data-el="footOutCol"]')) {
+      if (col.title !== view.outputTitle) col.title = view.outputTitle;
+    }
+    const hideBlock = prefs.showRequestMetrics === false || !generation || generation.requestIndex == null;
+    for (const block of root.querySelectorAll('[data-generation-block]')) {
+      if (block.hidden !== hideBlock) block.hidden = hideBlock;
+    }
     return view;
   }
   function appearance(prefs = {}) {
-    return { panelLayout: prefs.panelLayout || 'natural', density: prefs.density || 'compact', quotaIndicator: prefs.quotaIndicator || 'ring', labelCase: prefs.labelCase || 'lowercase', resetFormat: prefs.resetFormat === 'localized' ? 'localized' : 'compact', contextLayout: prefs.contextLayout === 'rows' ? 'rows' : 'columns', turnLayout: prefs.turnLayout === 'rows' ? 'rows' : 'columns', contextMarker: prefs.contextMarker === 'dot' ? 'dot' : 'square', turnMarker: prefs.turnMarker === 'dot' ? 'dot' : 'square', showContextBreakdown: String(prefs.showContextBreakdown !== false), columnLabel: String(prefs.columnLabel !== false), columnValue: String(prefs.columnValue !== false), columnPercent: String(prefs.columnPercent === true) };
+    return {
+      uiSkin: prefs.uiSkin === 'frosted' ? 'frosted' : 'native',
+      panelLayout: prefs.panelLayout || 'natural',
+      density: prefs.density || 'compact',
+      quotaIndicator: prefs.quotaIndicator === 'bar' ? 'bar' : 'ring',
+      labelCase: prefs.labelCase || 'lowercase',
+      resetFormat: prefs.resetFormat === 'localized' ? 'localized' : 'compact',
+      contextLayout: prefs.contextLayout === 'rows' ? 'rows' : 'columns',
+      turnLayout: prefs.turnLayout === 'rows' ? 'rows' : 'columns',
+      contextMarker: prefs.contextMarker === 'dot' ? 'dot' : 'square',
+      turnMarker: prefs.turnMarker === 'dot' ? 'dot' : 'square',
+      requestPosition: prefs.requestPosition === 'top' ? 'top' : 'bottom',
+      showContextBreakdown: String(prefs.showContextBreakdown !== false),
+      columnLabel: String(prefs.columnLabel !== false),
+      columnValue: String(prefs.columnValue !== false),
+      columnPercent: String(prefs.columnPercent === true),
+    };
   }
   function formatReset(isoStr, prefs = {}, now = Date.now()) {
     if (!isoStr) return '';
@@ -353,37 +572,56 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     return Math.max(1, m) + 'm';
   }
   function apply(root, prefs = {}) {
-    root.style.colorScheme = '';
+    if (root.style.colorScheme) root.style.colorScheme = '';
     for (const key of ['--background', '--foreground', '--card', '--muted-foreground', '--secondary', '--secondary-foreground', '--border']) {
       if (root.style.getPropertyValue(key) !== '') root.style.removeProperty(key);
     }
     const visual = appearance(prefs);
-    for (const [key, value] of Object.entries(visual)) root.dataset[key] = value;
+    for (const [key, value] of Object.entries(visual)) {
+      if (root.dataset[key] !== value) root.dataset[key] = value;
+    }
     const fieldOrder = String(prefs.columnOrder || 'label,value,percent').split(',');
-    for (const field of ['label', 'value', 'percent']) root.style.setProperty('--agy-order-' + field, String(Math.max(0, fieldOrder.indexOf(field))));
-    const scale = { compact: [4, 6, 8, 10], standard: [6, 8, 10, 12], spacious: [8, 11, 12, 14] }[visual.density] || [4, 6, 8, 10];
-    for (const [index, key] of ['--agy-row-gap', '--agy-section-gap', '--agy-pad-y', '--agy-pad-x'].entries()) root.style.setProperty(key, scale[index] + 'px');
-    root.dataset.highlightActiveModel = prefs.highlightActiveModel === true ? 'true' : 'false';
+    for (const field of ['label', 'value', 'percent']) {
+      const prop = '--agy-order-' + field;
+      const val = String(Math.max(0, fieldOrder.indexOf(field)));
+      if (root.style.getPropertyValue(prop) !== val) root.style.setProperty(prop, val);
+    }
+    const scale = { compact: [4, 9, 10, 12], standard: [6, 11, 12, 14], spacious: [8, 14, 14, 16] }[visual.density] || [4, 9, 10, 12];
+    for (const [index, key] of ['--agy-row-gap', '--agy-section-gap', '--agy-pad-y', '--agy-pad-x'].entries()) {
+      const val = scale[index] + 'px';
+      if (root.style.getPropertyValue(key) !== val) root.style.setProperty(key, val);
+    }
+    const highlightVal = prefs.highlightActiveModel === true ? 'true' : 'false';
+    if (root.dataset.highlightActiveModel !== highlightVal) root.dataset.highlightActiveModel = highlightVal;
     const language = systemLocale(prefs);
-    root.dataset.language = language;
+    if (root.dataset.language !== language) root.dataset.language = language;
     const t = dictionaries[language];
     const settingsLanguage = dictionaries[prefs.settingsLanguage] ? prefs.settingsLanguage : 'zh-CN';
-    const settings = root.querySelector('.settings');
-    if (settings) settings.lang = settingsLanguage;
-    for (const node of root.querySelectorAll('[data-i18n]')) {
-      const dict = node.closest('.settings') ? dictionaries[settingsLanguage] : t;
-      const value = dict[node.dataset.i18n];
-      if (value && node.textContent !== value) node.textContent = value;
+    const i18nKey = `${language}:${settingsLanguage}`;
+    if (root.nodeType !== 1 || root._i18nKey !== i18nKey) {
+      const settings = root.querySelector('.settings');
+      if (settings && settings.lang !== settingsLanguage) settings.lang = settingsLanguage;
+      for (const node of root.querySelectorAll('[data-i18n]')) {
+        const dict = node.closest('.settings') ? dictionaries[settingsLanguage] : t;
+        const value = dict[node.dataset.i18n];
+        if (value && node.textContent !== value) node.textContent = value;
+      }
+      for (const node of root.querySelectorAll('[data-stats-i18n]')) {
+        const value = t[node.dataset.statsI18n];
+        if (value && node.textContent !== value) node.textContent = value;
+      }
+      applyQuotaTooltips(root, t);
+      if (root.nodeType === 1) root._i18nKey = i18nKey;
     }
-    for (const node of root.querySelectorAll('[data-stats-i18n]')) {
-      const value = t[node.dataset.statsI18n];
-      if (value && node.textContent !== value) node.textContent = value;
-    }
-    applyQuotaTooltips(root, t);
     return t;
   }
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  return { version: 61, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens, cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
+  return {
+    version: 62, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens,
+    quotaColor, makeRingSvg, formatGroupTitle, formatBucketLabel, activeGroupColor, matchActiveGroup, contextBreakdown, renderCacheRing,
+    cacheTooltip, cacheView, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, alertView, renderAlerts,
+    generationText, generationMarkup, renderGeneration, ...turnMethods,
+  };
 }
 
-export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 61) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;
+export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 62) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;

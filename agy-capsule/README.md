@@ -8,9 +8,9 @@ Injects a shadow-DOM metrics strip into the Antigravity composer footer via the 
 
 - **Context capsule**: Live context usage percentage (`0 / --` before the first turn), optional **Generation speed** (latest completed request in the current turn), and optional **Effects** (breathing dot while generating: red `<10 tok/s`, yellow `10–25 tok/s`, green `≥25 tok/s`; retains speed color for 15s after completion before graying out).
 - **Quota capsule**: Matched model pool quotas (`5 Hours` and `Weekly`) across `Gemini`, `Claude`, `Argon`, and `Carbon`, with reset countdowns. When no subscription quota is returned and Antigravity confirms the account uses Cloud pay-as-you-go billing, the entire quota capsule is hidden.
-- **Third capsule — Request failure & Server queue alert** (both optional; request failure takes priority):
+- **Third capsule — Request failure & First-token wait alert** (both optional; request failure takes priority):
   - **Request failure**: Appears in red when a request fails, classifying `Quota exhausted`, `Rate limited` (429 + retry wait when reported), `Disconnected`, `Authentication error`, `Service busy`, or `Unknown reason` with raw diagnostics in its panel.
-  - **Server queue alert**: Appears in amber when waiting for the first token in the current turn exceeds the threshold (`30s` default, configurable `1–999s`), showing live wait seconds and `×N` for repeated slow waits in the same turn (`Queue 35s`, `Queue×2 40s`, `Queue×2`) with wait details in its panel. Active local tools and streaming responses are excluded.
+  - **First-token wait alert**: An amber capsule appears when a wait reaches the threshold (default `30s`, range `1–999s`). `Wait×2 40s` means two intervals reached the threshold this turn, including a current estimate of 40 seconds. Active tools and streaming stop the live clock. Earlier slow waits remain visible in the panel.
 - **Hover & click-to-pin**: Hover any capsule to open its popover panel; click to pin it open (click again, click outside, or press `Escape` to close).
 - **4-level narrow-width progressive fallback**: When composer width shrinks, degrades in stages (collapses Turbo selector / hides speed and error label → hides secondary quota window → hides quota and context percentages down to icon-only → ellipsis-truncates the model selector and hides remaining capsules if space is exhausted) to preserve hover access without overlap.
 
@@ -37,7 +37,7 @@ Provides **Statistics** and **Settings** tabs at the top (settings live exclusiv
   - **Context breakdown**: `true`; `columns` (default) or `rows`, `square` (default) or `dot` markers, with toggleable and drag-reorderable column fields (`Name`: `true`, `Value`: `true`, `%`: `false`; default order `label,value,percent`)
   - **Last request**: `true` (shows `TTFT–total duration` range and generation speed)
   - **Turn metrics**: `false`; `columns` (default) or `rows`, `square` (default) or `dot` markers
-  - **Server queue alert**: `true` with configurable threshold (`queueWarnSec`: `30s`, `1–999`) at the end of Settings
+  - **First-token wait alert**: `true` with configurable threshold (`queueWarnSec`: `30s`, `1–999`) at the end of Settings
 
 ## Telemetry & Metric Definitions
 
@@ -47,7 +47,7 @@ Provides **Statistics** and **Settings** tabs at the top (settings live exclusiv
 - **Last request**: Covers only the most recent recorded model request (`TTFT–request duration` and speed); unrelated to full-turn totals.
 - **Turn metrics**: Aggregates elapsed wall-clock time (including queueing, waits, and tool execution), request count (recorded retries included; pure preflight/injected responses excluded), `Write`, and `Think` tokens starting from the latest sent user message.
 - **Cache expiry estimate**: The warning / cold status (default `3m` / `4m`, configurable in Settings) is estimated locally from elapsed time since the last recorded step; actual cache hits depend on the server.
-- **Server queue alert**: Combines recorded per-turn request TTFTs with live pre-first-token waits while working (ignoring active local tools and streaming responses), resetting when a new user message starts a new turn.
+- **First-token wait alert** combines reported request TTFT with local step timing. The live estimate may start when processing the message begins or after a previous step finishes; it does not use the time the message was queued. The cause is unknown. The count resets when processing the next message begins.
 
 ## Install / Update / Uninstall
 

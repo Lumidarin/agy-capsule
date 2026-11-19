@@ -16,7 +16,7 @@ import { installAsyncHostRoutes, installEpipeGuard } from './host_bridge.mjs';
 import { createCdpNoticeManager } from './cdp_notice.mjs';
 
 const settingsStore = createSettingsStore();
-const PANEL_VERSION = 111;
+const PANEL_VERSION = 112;
 const presentation = createPresentation();
 export function getNotifyText(shortcutState, prefs) {
   const t = presentation.dictionaries[prefs?.settingsLanguage] || presentation.dictionaries['zh-CN'];
@@ -354,11 +354,21 @@ function readConversationSnapshot(dbPath, includeTurnMetrics = true) {
         const transitions = (parsePbMap(fields.get(26)?.[0] || Buffer.alloc(0)).get(1) || []).map(value => parsePbMap(value));
         const generating = transitions.filter(item => item.get(1)?.[0] === 8).map(item => epoch(item.get(2)?.[0])).filter(value => value !== null);
         const terminal = transitions.filter(item => [3, 6, 7, 12].includes(item.get(1)?.[0])).map(item => epoch(item.get(2)?.[0])).filter(value => value !== null);
+        let inputStartedAtMs = null;
+        if (step.step_type === 14) {
+          for (const item of transitions) {
+            const status = item.get(1)?.[0];
+            // Step creation may precede consumption by the entire time spent queued.
+            if (status === 11) inputStartedAtMs = null;
+            else if (status === 2 || status === 3) inputStartedAtMs ??= epoch(item.get(2)?.[0]);
+          }
+        }
         return {
           idx: step.idx, step_type: step.step_type, status: step.status,
           completedAtMs: (time.get(1)?.[0] || 0) * 1000 + (time.get(2)?.[0] || 0) / 1e6,
           recordedCompletedAtMs: epoch(fields.get(8)?.[0]),
           createdAtMs: epoch(fields.get(1)?.[0]),
+          inputStartedAtMs,
           generatingAtMs: generating.length ? Math.min(...generating) : null,
           terminalAtMs: terminal.length ? Math.max(...terminal) : null,
           executionId: fields.get(12)?.[0]?.toString('utf8') || '',
@@ -401,7 +411,9 @@ function readConversationSnapshot(dbPath, includeTurnMetrics = true) {
     if (!parsed) continue;
     parsedRequests.push(parsed);
     latestGeneration = parsed.generation;
-    latestRequestError = parsed.requestError;
+    // Known earlier requests may finish late; they cannot replace the current turn's error.
+    const earlierRequest = userStepIndex !== null && parsed.lastStepIndex >= 0 && parsed.lastStepIndex < userStepIndex;
+    if (!earlierRequest) latestRequestError = parsed.requestError;
     if (parsed.maxContextTokens > 0) {
       maxContextTokens = parsed.maxContextTokens;
     }

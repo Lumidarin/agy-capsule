@@ -486,10 +486,7 @@ export function syncModelPicker(root, footer, prefsOrEnabled, labels, findFooter
         main.append(nameEl);
 
         if (group.isMultiTier) {
-          const activeItem = isActiveGroup ? group.items.find(item => item.label === next.selected) : null;
-          const medItem = group.items.find(item => item.tier?.toLowerCase() === 'medium');
-          const targetItem = group.items.find(item => item.label === targetLabel);
-          const displayTier = activeItem?.tier || medItem?.tier || targetItem?.tier || '';
+          const displayTier = group.items.find(item => item.label === targetLabel)?.tier || '';
           const shouldHideTier = currentHideDefaultEffort && displayTier.toLowerCase() === 'medium';
           if (displayTier && !shouldHideTier) {
             const eff = document.createElement('span');

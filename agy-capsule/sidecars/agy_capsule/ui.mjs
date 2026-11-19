@@ -27,7 +27,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       notifyCdpRestart: 'Restart recovery notice',
       cdpRestartPreview: 'Notify once if a client update restart skips the shortcut',
       sidebarStats: 'Statistics', sidebarSettings: 'Settings', sidebarNavigation: 'Sidebar view',
-      settingsLanguage: 'Settings language', highlightActiveModel: 'Highlight active model',
+      settingsLanguage: 'Settings language', modelEffortPicker: 'Enhanced model capsule', keepNativeModelEntry: 'Keep native button', hideModelTags: 'Hide model tags', hideDefaultEffort: 'Hide default effort', customizeModelList: 'Customize models', modelPickerEmpty: 'Enable the footer capsule and open an existing conversation to list its models.', modelPickerUnconfirmed: 'Selection unconfirmed. Check the native menu.', highlightActiveModel: 'Highlight active model',
       hideUnavailableQuota: 'Hide absent quota windows',
       showCacheWarnings: 'Cache expiry alert',
       cacheWarnMin: 'Yellow alert (min)', cacheColdMin: 'Red alert (min)',
@@ -112,7 +112,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       notifyCdpRestart: '更新重启失效提醒',
       cdpRestartPreview: '客户端更新重启未走快捷方式时，弹一次系统提醒',
       sidebarStats: '统计', sidebarSettings: '设置', sidebarNavigation: 'Sidebar 页面',
-      settingsLanguage: '设置语言', highlightActiveModel: '突出当前模型',
+      settingsLanguage: '设置语言', modelEffortPicker: '优化模型胶囊', keepNativeModelEntry: '保留原入口', hideModelTags: '隐藏模型标签', hideDefaultEffort: '隐藏默认强度', customizeModelList: '定制模型列表', modelPickerEmpty: '请启用底栏胶囊并打开已有对话，以列出该对话可用的模型。', modelPickerUnconfirmed: '尚未确认切换，请查看原生菜单。', highlightActiveModel: '突出当前模型',
       hideUnavailableQuota: '隐藏不存在的配额窗口',
       showCacheWarnings: '缓存过期提醒',
       cacheWarnMin: '变黄时间（分钟）', cacheColdMin: '变红时间（分钟）',
@@ -197,7 +197,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       notifyCdpRestart: '更新重啟失效提醒',
       cdpRestartPreview: '用戶端更新重啟未走捷徑時，彈一次系統提醒',
       sidebarStats: '統計', sidebarSettings: '設定', sidebarNavigation: 'Sidebar 頁面',
-      settingsLanguage: '設定語言', highlightActiveModel: '突出目前模型',
+      settingsLanguage: '設定語言', modelEffortPicker: '最佳化模型膠囊', keepNativeModelEntry: '保留原入口', hideModelTags: '隱藏模型標籤', hideDefaultEffort: '隱藏預設強度', customizeModelList: '自訂模型清單', modelPickerEmpty: '請啟用底欄膠囊並開啟已有對話，以列出該對話可用的模型。', modelPickerUnconfirmed: '尚未確認切換，請查看原生選單。', highlightActiveModel: '突出目前模型',
       hideUnavailableQuota: '隱藏不存在的配額視窗',
       showCacheWarnings: '快取過期提醒',
       cacheWarnMin: '變黃時間（分鐘）', cacheColdMin: '變紅時間（分鐘）',
@@ -654,7 +654,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     return t;
   }
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  return { version: 69, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens, cacheThresholds, makeCacheRingSvg, cacheTooltip, cacheView, contextBreakdown, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, quotaColor, makeRingSvg, formatGroupTitle, formatBucketLabel, activeGroupColor, quotaView, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
+  return { version: 75, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens, cacheThresholds, makeCacheRingSvg, cacheTooltip, cacheView, contextBreakdown, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, quotaColor, makeRingSvg, formatGroupTitle, formatBucketLabel, activeGroupColor, quotaView, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
 }
 
-export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 69) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;
+export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 75) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;

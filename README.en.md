@@ -48,6 +48,15 @@ Shows the remaining 5-hour and weekly quotas and their reset countdowns for the 
 - **Request failure capsule**: Appears in red only when a request fails; hover or click it to see the raw error and an explanation in the panel. Reasons shown: quota exhausted, rate limited (429), disconnected, authentication error, service busy and unknown.
 - **Server queue alert**: Appears in amber when waiting for the model's first token during Working exceeds the threshold (default `30s`, configurable `1–999s` at the end of Settings), ticking live while waiting. Scoped to the current turn only, showing `×N` when multiple requests exceed the threshold (e.g. `Queue×2 40s` / `Queue×2`), with per-wait details in its panel. Active local tools and streaming responses do not trigger false alerts.
 
+## Enhanced model capsule
+
+**Off by default.** When enabled, adds a native-styled model and effort selector to the composer footer (for both existing and new conversations): hover any multi-tier model to pick an effort level in one step from the side submenu, or click a model row directly to switch while inheriting your current effort (downgrading `XHigh`/`Extra`/`Max` to `High` if unsupported). Falls back to the native trigger automatically if the host interface does not match or the footer collapses on very narrow widths.
+
+- **Keep native button (on by default)**: Shrinks the native trigger into a `⋯` bubble next to the capsule so the native menu stays one click away; turn off to replace the native button in place.
+- **Hide model tags**: Hides tag badges such as `New` and `Notice` inside the dropdown.
+- **Hide default effort**: Omits the default `Medium` effort label in the dropdown list.
+- **Customize models**: Expands the list of models discovered from the host so you can toggle individual models on or off (at least one model always remains visible).
+
 ## Language and appearance
 
 - **Settings language**: English, Simplified Chinese, Traditional Chinese. The language of the settings page.
@@ -147,6 +156,7 @@ Issues and pull requests are welcome. See the [contribution guide](./CONTRIBUTIN
 
 1. **Inspired by @z21100644 ([PR #1](https://github.com/Lumidarin/agy-capsule/pull/1))**: Thanks for the ideas behind multilingual support, parts of the panel design, click-to-pin, active-model highlighting, generation metrics and speed effects, consistent `K` / `M` token formatting, cache and quota tooltips, context overload alerts, request error classification, and hiding absent quota windows. This version also drew on style isolation, SQLite read caching, incremental CDP updates, installation and maintenance, and Sidecar auto-reload, reimplemented to fit this project. It does not include seven-category context estimates or attachment scanning. Separate settings and display languages, independent appearance controls, the request failure capsule, the new footer's collapse order, turn metrics, and Sidebar interactions were designed separately for this release.
 2. **Inspired by @Krwaby123 ([PR #2](https://github.com/Lumidarin/agy-capsule/pull/2))**: Thanks for reporting quota panel overflow with page-translation extensions and proposing shared column alignment with widths that adapt to longer translations. This version uses a different grid across quota groups and marks percentages and countdowns as not translatable. Chinese countdowns are still available in Settings.
+3. **Inspired by [antigravity-Codex-Claude-effort-slider](https://github.com/LLYSH-HANNARI/antigravity-Codex-Claude-effort-slider)**: Thanks for the approach of reading host model options from the Antigravity model button's React fiber tree and submitting a model + effort pair in one step. Reimplemented here on top of agy-capsule's CDP injector with Antigravity 2.33 and new-conversation support, hover effort submenus, effort inheritance, and customizable model visibility.
 
 ## License
 

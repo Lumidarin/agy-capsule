@@ -6,6 +6,7 @@ Real-time context window usage, multi-model quota, cache status, generation spee
 
 Injects a shadow-DOM metrics strip into the Antigravity composer footer via the local DevTools (CDP) endpoint:
 
+- **Enhanced model capsule** (optional, off by default): Native-styled model & effort selector supporting both existing and new conversations (Antigravity 2.33 selector provider with 2.32 fallback). Hover multi-tier models to select an effort tier from the side flyout, or click a model row directly to inherit the current effort (`XHigh`/`Extra`/`Max` downgrades to `High` when unsupported). Can either keep the native trigger as a compact `⋯` bubble or replace it in place, and falls back to the native button if the host interface changes or narrow-width collapse activates.
 - **Context capsule**: Live context usage percentage (`0 / --` before the first turn), optional **Generation speed** (latest completed request in the current turn), and optional **Effects** (breathing dot while generating: red `<10 tok/s`, yellow `10–25 tok/s`, green `≥25 tok/s`; retains speed color for 15s after completion before graying out).
 - **Quota capsule**: Matched model pool quotas (`5 Hours` and `Weekly`) across `Gemini`, `Claude`, `Argon`, and `Carbon`, with reset countdowns. When no subscription quota is returned and Antigravity confirms the account uses Cloud pay-as-you-go billing, the entire quota capsule is hidden.
 - **Third capsule — Request failure & Server queue alert** (both optional; request failure takes priority):
@@ -27,6 +28,7 @@ Provides **Statistics** and **Settings** tabs at the top (settings live exclusiv
   - **Cache indicator**: `icon` (default), `ring`, or `bar` (linear progress over elapsed idle time: green → yellow → full red)
   - **Reset countdown**: `compact` (default) or `localized`
 - **Features** (unified section):
+  - **Enhanced model capsule**: `false` — with **Keep native button** (`true`), **Hide model tags** (`false`), **Hide default effort** (`false`), and **Customize models** (`false`, persists `hiddenModels` in `settings.json`)
   - **Highlight active model**: `false` (dims non-active quota pools when enabled)
   - **Hide absent quota windows**: `true` (hides empty windows such as Argon's missing 5h window on AI Pro)
   - **Cache expiry alert**: `true` with configurable yellow/red thresholds (`cacheWarnMin`: `3m`, `1–998`; `cacheColdMin`: `4m`, `2–999`; synced with panel Cache row)
@@ -67,6 +69,7 @@ Run the scripts from the repository root:
 
 - Selected features and visual/engineering ideas (multi-language support, panel visuals, active-model highlighting, click-to-pin, generation speed/effects, cache & quota tooltips, overload alerts, error classification, absent window hiding, style isolation, SQLite snapshot caching, incremental CDP pushes, and install maintenance) were adapted and reimplemented from [z21100644's PR #1](https://github.com/Lumidarin/agy-capsule/pull/1). Separate display/settings languages, independent appearance controls, the third failure capsule, narrow-width fallback order, turn metrics, and sidebar interactions were designed independently; 7-category context estimates and attachment scanning were not adopted.
 - Quota popover overflow under browser/page translation extensions was reported with a proposed fix in [Krwaby123's PR #2](https://github.com/Lumidarin/agy-capsule/pull/2), resolved here via column alignment and no-translate attributes.
+- Reading host model options from the Antigravity model trigger's React fiber tree for one-step model/effort selection was inspired by [antigravity-Codex-Claude-effort-slider](https://github.com/LLYSH-HANNARI/antigravity-Codex-Claude-effort-slider), reimplemented here via the CDP injector with Antigravity 2.33 / new-chat support, hover effort submenus, effort inheritance, and model list customization.
 
 ## License
 

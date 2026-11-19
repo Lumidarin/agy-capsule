@@ -54,7 +54,7 @@ Shows the remaining 5-hour and weekly quotas and their reset countdowns for the 
 
 - **Keep native button (on by default)**: Shrinks the native trigger into a `⋯` bubble next to the capsule so the native menu stays one click away; turn off to replace the native button in place.
 - **Hide model tags**: Hides tag badges such as `New` and `Notice` inside the dropdown.
-- **Hide default effort**: Omits the default `Medium` effort label in the dropdown list.
+- **Hide default effort**: Hides effort previews in the model dropdown list (the footer button and hover effort submenu still show tiers, and direct clicks still inherit your current effort).
 - **Customize models**: Expands the list of models discovered from the host so you can toggle individual models on or off (at least one model always remains visible).
 
 ## Language and appearance

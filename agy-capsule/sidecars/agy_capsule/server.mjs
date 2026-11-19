@@ -1767,9 +1767,13 @@ const UI_HTML = `<!DOCTYPE html>
             lastData.deckCdpInfo.shortcutState = result.shortcutState;
             lastData.deckCdpInfo.canFixShortcut = result.shortcutState === 'missing';
           }
-          shortcutFixMessageKey = result?.ok ? 'cdpFixShortcutDone' : 'cdpFixShortcutAdmin';
+          shortcutFixMessageKey = result?.ok ? 'cdpFixShortcutDone'
+            : result?.reason === 'partial' ? 'cdpFixShortcutPartial'
+            : result?.reason === 'not_found' ? 'cdpFixShortcutNotFound'
+            : result?.reason === 'error' ? 'cdpFixShortcutError'
+            : 'cdpFixShortcutAdmin';
         } catch {
-          shortcutFixMessageKey = 'cdpFixShortcutAdmin';
+          shortcutFixMessageKey = 'cdpFixShortcutError';
         } finally {
           fixingShortcut = false;
           renderHealthNotice();

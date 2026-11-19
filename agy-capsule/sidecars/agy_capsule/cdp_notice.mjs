@@ -5,15 +5,15 @@ import { dirname, join } from 'node:path';
 
 const DEFAULT_STATE_PATH = join(homedir(), '.gemini', 'config', 'agy-capsule', 'cdp_state.json');
 
-const SHORTCUT_SCAN_PS = `
-$ErrorActionPreference = 'SilentlyContinue'
-$dirs = @(
+const DEFAULT_SHORTCUT_DIRS_PS = `@(
   [Environment]::GetFolderPath('Desktop'),
   [Environment]::GetFolderPath('CommonDesktopDirectory'),
   [Environment]::GetFolderPath('StartMenu'),
   [Environment]::GetFolderPath('CommonStartMenu'),
   (Join-Path $env:APPDATA 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar')
-) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+)`;
+
+const SHORTCUT_SCAN_PS = `
 $pattern = '(^|\\s)--remote-debugging-port(=\\S*)?(?=\\s|$)'
 $shell = New-Object -ComObject WScript.Shell
 $total = 0; $missing = 0
@@ -30,14 +30,6 @@ if ($total -eq 0) { 'unknown' } elseif ($missing -gt 0) { 'missing' } else { 'ok
 `;
 
 const SHORTCUT_FIX_PS = `
-$ErrorActionPreference = 'SilentlyContinue'
-$dirs = @(
-  [Environment]::GetFolderPath('Desktop'),
-  [Environment]::GetFolderPath('CommonDesktopDirectory'),
-  [Environment]::GetFolderPath('StartMenu'),
-  [Environment]::GetFolderPath('CommonStartMenu'),
-  (Join-Path $env:APPDATA 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar')
-) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
 $pattern = '(^|\\s)--remote-debugging-port(=\\S*)?(?=\\s|$)'
 $shell = New-Object -ComObject WScript.Shell
 $total = 0; $updated = 0; $failed = 0; $stillMissing = 0
@@ -127,11 +119,21 @@ export function createCdpNoticeManager(options = {}) {
     } catch {}
   }
 
+  function runShortcutScript(script) {
+    const roots = options.shortcutDirectories;
+    const source = roots === undefined ? DEFAULT_SHORTCUT_DIRS_PS : '(ConvertFrom-Json $env:AGY_CDP_TEST_ROOTS)';
+    const command = `$ErrorActionPreference = 'SilentlyContinue'
+$dirs = ${source} | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+${script}`;
+    const env = roots === undefined ? process.env : { ...process.env, AGY_CDP_TEST_ROOTS: JSON.stringify(roots) };
+    return runExec(execFileImpl, 'powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { env });
+  }
+
   async function checkShortcuts() {
     if (platform !== 'win32') return 'unknown';
     if (shortcutPromise) return shortcutPromise;
     shortcutPromise = (async () => {
-      const res = await runExec(execFileImpl, 'powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', SHORTCUT_SCAN_PS]);
+      const res = await runShortcutScript(SHORTCUT_SCAN_PS);
       const line = res.stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean).at(-1);
       if (line === 'ok' || line === 'missing' || line === 'unknown') shortcutState = line;
       shortcutChecked = true;
@@ -186,7 +188,6 @@ export function createCdpNoticeManager(options = {}) {
     lastStatus = cdpState;
     if (cdpState === 'ok') {
       consecutiveFails = 0;
-      shortcutState = 'ok';
       if (persisted.lastOkSession !== sessionId) {
         persisted.everOk = true;
         persisted.lastOkAt = Date.now();
@@ -207,7 +208,7 @@ export function createCdpNoticeManager(options = {}) {
 
   async function fixShortcuts() {
     if (platform !== 'win32') return { ok: false, updated: 0, failed: 0, total: 0, shortcutState };
-    const res = await runExec(execFileImpl, 'powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', SHORTCUT_FIX_PS]);
+    const res = await runShortcutScript(SHORTCUT_FIX_PS);
     const line = res.stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean).at(-1) || '';
     const [nextState, updatedStr, failedStr, totalStr] = line.split(',');
     const updated = Number(updatedStr) || 0;

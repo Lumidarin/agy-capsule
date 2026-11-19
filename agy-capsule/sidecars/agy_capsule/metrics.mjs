@@ -47,16 +47,18 @@ export function summarizeTurnQueue(requests, steps, userStepIndex, executors = [
   if (!Number.isInteger(userStepIndex)) return null;
   // An older request can create its response step after the next input.
   const priorPlannerLinks = new Set();
-  const otherLinks = new Set();
+  const currentPlannerLinks = new Set();
   for (const request of requests) {
-    const knownPrior = Number.isInteger(request.lastStepIndex) && request.lastStepIndex >= 0 && request.lastStepIndex < userStepIndex;
-    const links = knownPrior ? priorPlannerLinks : otherLinks;
+    const input = request.lastStepIndex;
+    if (!Number.isInteger(input) || input < 0) continue;
+    const links = input < userStepIndex ? priorPlannerLinks : currentPlannerLinks;
     for (const idx of request.stepIndices || []) {
       if (idx > userStepIndex) links.add(idx);
     }
   }
-  const scope = steps.filter(step => step.idx >= userStepIndex &&
-    (step.step_type !== 15 || !priorPlannerLinks.has(step.idx) || otherLinks.has(step.idx)));
+  const isPriorLink = idx => priorPlannerLinks.has(idx) && !currentPlannerLinks.has(idx);
+  const isPriorPlanner = step => step.step_type === 15 && isPriorLink(step.idx);
+  const scope = steps.filter(step => step.idx >= userStepIndex && !isPriorPlanner(step));
   const user = scope.find(step => step.idx === userStepIndex && step.step_type === 14);
   if (!user) return null;
 
@@ -70,14 +72,23 @@ export function summarizeTurnQueue(requests, steps, userStepIndex, executors = [
     || ([6, 12].includes(user.status) && scope.every(step => step.step_type === 14))
   );
 
-  const attributable = requests.filter(request => request.lastStepIndex >= userStepIndex);
+  const plannerIndices = new Set(scope.filter(step => step.step_type === 15).map(step => step.idx));
   const coveredSteps = new Set();
   const waits = [];
-  for (const request of attributable) {
+  for (const request of requests) {
+    const input = request.lastStepIndex;
+    const links = request.stepIndices || [];
+    if (Number.isInteger(input) && input >= 0) {
+      if (input < userStepIndex) continue;
+    } else if (!links.some(idx => plannerIndices.has(idx)) ||
+        links.some(idx => idx <= userStepIndex || isPriorLink(idx))) {
+      // A generated step can identify the wait when the request has no input index.
+      continue;
+    }
     const ttft = request.generation?.ttft;
     if (ttft !== null && ttft !== undefined && Number.isFinite(ttft) && ttft >= 0) {
       waits.push(ttft);
-      for (const idx of request.stepIndices || []) coveredSteps.add(idx);
+      for (const idx of links) coveredSteps.add(idx);
     }
   }
   for (const step of scope) {
@@ -91,6 +102,8 @@ export function summarizeTurnQueue(requests, steps, userStepIndex, executors = [
 
   const hasActiveTool = scope.some(step => step.step_type !== 14 && step.step_type !== 15 && ACTIVE_STEP_STATUSES.has(step.status));
   const hasStreamingPlanner = scope.some(step => step.step_type === 15 && step.status === 8);
+  // An older planner is not counted here, but may still be keeping the composer in Working.
+  const hasPriorActivePlanner = steps.some(step => isPriorPlanner(step) && ACTIVE_STEP_STATUSES.has(step.status));
   const pendingPlanner = scope.findLast(step => step.step_type === 15 && [1, 2].includes(step.status));
   // Status and timing records can arrive in different snapshots.
   const waitingPendingPlanner = Boolean(pendingPlanner && !coveredSteps.has(pendingPlanner.idx) && !validEpoch(pendingPlanner.generatingAtMs));
@@ -100,12 +113,12 @@ export function summarizeTurnQueue(requests, steps, userStepIndex, executors = [
       if (waitingPendingPlanner) {
         waitingSinceMs = validEpoch(pendingPlanner.createdAtMs);
       }
-    } else {
+    } else if (!hasPriorActivePlanner) {
       const relevant = scope.filter(step => !(step.step_type === 14 && step.status === 11) && ![101, 17].includes(step.step_type));
       const last = relevant.at(-1);
       if (last) {
         if (last.step_type === 14) {
-          waitingSinceMs = validEpoch(last.createdAtMs);
+          waitingSinceMs = validEpoch(last.inputStartedAtMs);
         } else if (last.step_type !== 15 || last.status === 3) {
           waitingSinceMs = validEpoch(last.recordedCompletedAtMs) || validEpoch(last.terminalAtMs);
         }

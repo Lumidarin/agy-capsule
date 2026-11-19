@@ -111,7 +111,7 @@ From the repository folder, run `sh install.sh` to install, `sh update.sh` to up
 - **Last request** covers only the most recent model request, not the whole turn; missing values show `—`.
 - **Turn metrics** start at your latest message; elapsed time includes queueing, waiting and tool execution.
 - **Cache expiry alerts are only a guide**: the cache state (yellow at 3 minutes, expired at 4 by default; configurable in Settings) is estimated locally from the time since the last turn; actual cache hits depend on the server.
-- **First-token wait alert** combines reported request TTFT with local step timing. The live estimate may start at user input or after a previous step finishes. The cause of a delay is unknown. The count resets when the next user input is consumed.
+- **First-token wait alert** combines reported request TTFT with local step timing. The live estimate may start when processing the message begins or after a previous step finishes; it does not use the time the message was queued. The cause is unknown. The count resets when processing the next message begins.
 
 <details>
 <summary>Details</summary>

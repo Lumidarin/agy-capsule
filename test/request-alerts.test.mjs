@@ -49,6 +49,38 @@ function vi(value) {
 }
 const field = (n, data) => Buffer.concat([vi(n * 8 + 2), vi(data.length), data]);
 const retry = text => field(17, field(3, Buffer.from(text)));
+const integer = (n, v) => Buffer.concat([vi(n * 8), vi(v)]);
+const ts = (n, sec) => field(n, integer(1, sec));
+const trans = (status, sec) => field(1, Buffer.concat([integer(1, status), ts(2, sec)]));
+
+function waitFixture(t) {
+  const dir = mkdtempSync(join(tmpdir(), 'agy-queue-db-'));
+  const path = join(dir, 'chat.db');
+  const db = new DatabaseSync(path);
+  t.after(() => {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  db.exec('CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, status INTEGER, metadata BLOB); CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB); CREATE TABLE executor_metadata (idx INTEGER PRIMARY KEY, data BLOB);');
+  const ui = createPresentation();
+  const prefs = { showRequestErrors: true, showQueueWarnings: true, queueWarnSec: 30 };
+  return {
+    step(idx, type, status, created, transitions = []) {
+      const metadata = Buffer.concat([ts(1, created), field(26, Buffer.concat(transitions.map(([st, sec]) => trans(st, sec))))]);
+      db.prepare('INSERT OR REPLACE INTO steps VALUES (?,?,?,?)').run(idx, type, status, metadata);
+    },
+    request(idx, { input, planner, ttft, error } = {}) {
+      const fields = [];
+      if (input != null) fields.push(field(20, Buffer.concat([field(1, Buffer.from('last_step_index')), field(2, Buffer.from(String(input)))])));
+      if (ttft != null) fields.push(ts(11, ttft));
+      if (error != null) fields.push(retry(error));
+      const data = Buffer.concat([field(1, Buffer.concat(fields)), ...(planner == null ? [] : [integer(2, planner)])]);
+      db.prepare('INSERT INTO gen_metadata VALUES (?,?)').run(idx, data);
+    },
+    snapshot: includeMetrics => readConversationSnapshot(path, includeMetrics),
+    alert: (nowSec, running = false) => ui.alertView(readConversationSnapshot(path), prefs, ui.dictionaries['zh-CN'], nowSec * 1000, running),
+  };
+}
 
 test('SQLite decodes the final RetryInfo.error and clears an earlier failed retry after success', () => {
   const error = parseGenRow(3, field(1, retry('429 Too Many Requests')));
@@ -131,19 +163,11 @@ test('third capsule shows first-token wait alerts with xN multiplier, respects t
 });
 
 test('SQLite snapshot exposes turnQueue regardless of showTurnMetrics', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'agy-queue-db-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const path = join(dir, 'chat.db');
-  const db = new DatabaseSync(path);
-  db.exec('CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, status INTEGER, metadata BLOB); CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB); CREATE TABLE executor_metadata (idx INTEGER PRIMARY KEY, data BLOB);');
-  const integer = (n, v) => Buffer.concat([vi(n * 8), vi(v)]);
-  const ts = (n, sec) => field(n, integer(1, sec));
-  const trans = (st, sec) => field(1, Buffer.concat([integer(1, st), ts(2, sec)]));
-  db.prepare('INSERT INTO steps VALUES (?,?,?,?)').run(10, 14, 3, ts(1, 100));
-  db.prepare('INSERT INTO steps VALUES (?,?,?,?)').run(11, 15, 8, Buffer.concat([ts(1, 101), field(26, trans(8, 136))]));
-  db.close();
-  const snapOff = readConversationSnapshot(path, false);
-  const snapOn = readConversationSnapshot(path, true);
+  const f = waitFixture(t);
+  f.step(10, 14, 3, 100);
+  f.step(11, 15, 8, 101, [[8, 136]]);
+  const snapOff = f.snapshot(false);
+  const snapOn = f.snapshot(true);
   assert.deepEqual(snapOff.turnQueue.waits, [35]);
   assert.deepEqual(snapOn.turnQueue, snapOff.turnQueue);
 });
@@ -186,4 +210,70 @@ test('missing explicit completion timestamps cannot start a post-step waiting cl
   assert.equal(summarizeTurnQueue([], [user, { idx: 11, step_type: 132, status: 3, createdAtMs: 110000 }], 10).waitingSinceMs, null);
   assert.equal(summarizeTurnQueue([], [user, { idx: 11, step_type: 132, status: 3, createdAtMs: 110000, completedAtMs: 120000 }], 10).waitingSinceMs, null);
   assert.equal(summarizeTurnQueue([], [user, { idx: 11, step_type: 15, status: 3, createdAtMs: 110000, completedAtMs: 120000 }], 10).waitingSinceMs, null);
+});
+
+test('an older active planner blocks the fallback clock but not a new confirmed pending planner', t => {
+  const f = waitFixture(t);
+  f.step(10, 14, 3, 100);
+  f.step(20, 14, 3, 150, [[3, 150]]);
+  f.step(21, 15, 8, 151, [[8, 154]]);
+  f.request(1, { input: 10, planner: 21, ttft: 3 });
+  assert.equal(f.alert(185, true).visible, false, 'Working can still belong to the older streaming request');
+  assert.deepEqual(f.snapshot().turnQueue.waits, []);
+
+  f.step(22, 15, 2, 185);
+  assert.equal(f.alert(215, true).label, '等待 30s', 'a current pending planner has its own anchor');
+});
+
+test('only an eligible request error can mask the current turn wait', t => {
+  const f = waitFixture(t);
+  f.step(10, 14, 3, 100);
+  f.request(1, { input: 10, error: '429 Too Many Requests' });
+  f.step(20, 14, 11, 150);
+  assert.equal(f.alert(190).label, '429 限流', 'queued input does not reset the current error');
+
+  f.step(20, 14, 3, 150);
+  f.step(21, 15, 2, 151);
+  assert.equal(f.alert(191).label, '等待 40s');
+
+  f.request(2, { input: 20, error: '429 Too Many Requests' });
+  f.request(3, { input: 10, error: '503 Service Unavailable' });
+  assert.equal(f.alert(191).label, '429 限流', 'late older errors do not replace the current error');
+  f.request(4, { input: 20 });
+  assert.equal(f.alert(191).label, '等待 40s', 'a newer current request clears the error');
+  f.request(5, { error: '429 Too Many Requests' });
+  assert.equal(f.alert(191).label, '429 限流', 'an error of unknown age is not assumed stale');
+});
+
+test('queued input creation time never starts the live first-token timer', t => {
+  const f = waitFixture(t);
+  f.step(10, 14, 3, 100);
+  f.step(20, 14, 11, 143);
+  assert.equal(f.snapshot().turnQueue.userStepIndex, 10);
+
+  f.step(20, 14, 3, 143);
+  assert.equal(f.snapshot().turnQueue.userStepIndex, 20);
+  assert.equal(f.alert(190, true).visible, false, 'the consumption timestamp is unknown');
+  f.step(20, 14, 3, 143, [[11, 143], [2, 190], [3, 191]]);
+  assert.equal(f.alert(191, true).visible, false, 'do not display the 47 seconds spent queued');
+  assert.equal(f.alert(220, true).label, '等待 30s', 'use the first transition out of queued');
+
+  f.step(20, 14, 3, 143);
+  f.step(21, 15, 2, 190);
+  assert.equal(f.alert(220, true).label, '等待 30s', 'otherwise wait for a planner timestamp');
+});
+
+test('a TTFT linked to the current pending planner stops the clock even without a request input index', t => {
+  const f = waitFixture(t);
+  f.step(10, 14, 3, 90);
+  f.step(20, 14, 3, 100);
+  f.step(21, 15, 2, 100);
+  f.step(22, 15, 2, 100);
+  f.request(1, { planner: 22, ttft: 2 });
+  f.request(2, { input: 10, planner: 21, ttft: 50 });
+  f.request(3, { planner: 21, ttft: 50 });
+  f.request(4, { ttft: 60 });
+  assert.equal(f.alert(140).visible, false);
+  assert.deepEqual(f.snapshot().turnQueue.waits, [2], 'only the TTFT linked to a current planner is usable');
+  assert.equal(f.snapshot().turnQueue.hasPendingPlanner, false);
 });

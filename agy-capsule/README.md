@@ -47,7 +47,7 @@ Provides **Statistics** and **Settings** tabs at the top (settings live exclusiv
 - **Last request**: Covers only the most recent recorded model request (`TTFT–request duration` and speed); unrelated to full-turn totals.
 - **Turn metrics**: Aggregates elapsed wall-clock time (including queueing, waits, and tool execution), request count (recorded retries included; pure preflight/injected responses excluded), `Write`, and `Think` tokens starting from the latest sent user message.
 - **Cache expiry estimate**: The warning / cold status (default `3m` / `4m`, configurable in Settings) is estimated locally from elapsed time since the last recorded step; actual cache hits depend on the server.
-- **First-token wait alert** combines reported request TTFT with local step timing. The live estimate may start at user input or after a previous step finishes. The cause of a delay is unknown. The count resets when the next user input is consumed.
+- **First-token wait alert** combines reported request TTFT with local step timing. The live estimate may start when processing the message begins or after a previous step finishes; it does not use the time the message was queued. The cause is unknown. The count resets when processing the next message begins.
 
 ## Install / Update / Uninstall
 

@@ -1770,8 +1770,8 @@ const UI_HTML = `<!DOCTYPE html>
           shortcutFixMessageKey = result?.ok ? 'cdpFixShortcutDone'
             : result?.reason === 'partial' ? 'cdpFixShortcutPartial'
             : result?.reason === 'not_found' ? 'cdpFixShortcutNotFound'
-            : result?.reason === 'error' ? 'cdpFixShortcutError'
-            : 'cdpFixShortcutAdmin';
+            : result?.reason === 'permission' ? 'cdpFixShortcutAdmin'
+            : 'cdpFixShortcutError';
         } catch {
           shortcutFixMessageKey = 'cdpFixShortcutError';
         } finally {

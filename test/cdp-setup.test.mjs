@@ -64,7 +64,7 @@ test('sidebar ships the CDP notice on both tabs with the script command and tran
   assert.ok(UI_HTML.includes('data-setting-card="notifyCdpRestart"'));
 });
 
-test('sidebar shows the partial repair message instead of the error on a partial result', async () => {
+test('sidebar shows distinct repair outcomes and reserves the admin hint for permission errors', async () => {
   const { dictionaries } = createPresentation();
   for (const language of ['en', 'zh-CN', 'zh-TW']) {
     assert.ok(dictionaries[language].cdpFixShortcutPartial, language);
@@ -87,6 +87,16 @@ test('sidebar shows the partial repair message instead of the error on a partial
   context.result = { ok: false, reason: 'error', shortcutState: 'missing' };
   await context.click();
   assert.equal(dict[runInContext('shortcutFixMessageKey', context)], dict.cdpFixShortcutError);
+
+  for (const [result, expected] of [
+    [{ ok: false, reason: 'permission' }, dict.cdpFixShortcutAdmin],
+    [{ ok: false, reason: 'unsupported' }, dict.cdpFixShortcutError],
+    [{ error: 'Unexpected response' }, dict.cdpFixShortcutError],
+  ]) {
+    context.result = result;
+    await context.click();
+    assert.equal(dict[runInContext('shortcutFixMessageKey', context)], expected);
+  }
 });
 
 test('cdp_notice distinguishes first-time vs post-update restart, notifies once per session, and supports shortcut repair', async t => {

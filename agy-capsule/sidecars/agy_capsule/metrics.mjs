@@ -92,11 +92,12 @@ export function summarizeTurnQueue(requests, steps, userStepIndex, executors = [
   const hasActiveTool = scope.some(step => step.step_type !== 14 && step.step_type !== 15 && ACTIVE_STEP_STATUSES.has(step.status));
   const hasStreamingPlanner = scope.some(step => step.step_type === 15 && step.status === 8);
   const pendingPlanner = scope.findLast(step => step.step_type === 15 && [1, 2].includes(step.status));
+  // Status and timing records can arrive in different snapshots.
+  const waitingPendingPlanner = Boolean(pendingPlanner && !coveredSteps.has(pendingPlanner.idx) && !validEpoch(pendingPlanner.generatingAtMs));
   let waitingSinceMs = null;
   if (!turnTerminal && !hasActiveTool && !hasStreamingPlanner) {
     if (pendingPlanner) {
-      // Status and timing records can arrive in different snapshots.
-      if (!coveredSteps.has(pendingPlanner.idx) && !validEpoch(pendingPlanner.generatingAtMs)) {
+      if (waitingPendingPlanner) {
         waitingSinceMs = validEpoch(pendingPlanner.createdAtMs);
       }
     } else {
@@ -105,10 +106,8 @@ export function summarizeTurnQueue(requests, steps, userStepIndex, executors = [
       if (last) {
         if (last.step_type === 14) {
           waitingSinceMs = validEpoch(last.createdAtMs);
-        } else if (last.step_type !== 15) {
+        } else if (last.step_type !== 15 || last.status === 3) {
           waitingSinceMs = validEpoch(last.recordedCompletedAtMs) || validEpoch(last.terminalAtMs);
-        } else if (last.status === 3) {
-          waitingSinceMs = validEpoch(last.recordedCompletedAtMs) || validEpoch(last.terminalAtMs) || validEpoch(last.completedAtMs);
         }
       }
     }
@@ -118,7 +117,7 @@ export function summarizeTurnQueue(requests, steps, userStepIndex, executors = [
     userStepIndex,
     waits,
     waitingSinceMs,
-    hasPendingPlanner: Boolean(pendingPlanner),
+    hasPendingPlanner: waitingPendingPlanner,
     turnTerminal,
   };
 }

@@ -16,7 +16,7 @@ import { installAsyncHostRoutes, installEpipeGuard } from './host_bridge.mjs';
 import { createCdpNoticeManager } from './cdp_notice.mjs';
 
 const settingsStore = createSettingsStore();
-const PANEL_VERSION = 111;
+const PANEL_VERSION = 112;
 const presentation = createPresentation();
 export function getNotifyText(shortcutState, prefs) {
   const t = presentation.dictionaries[prefs?.settingsLanguage] || presentation.dictionaries['zh-CN'];
@@ -508,7 +508,7 @@ const PV_CARD_PREVIEW = {
   showQueueWarnings: `<div class="pv-queue-strip">
     <span class="pv-pill">${PV_SVG.db}<span>42%</span></span>
     <span class="pv-pill">${PV_SVG.clock}<span>85%</span></span>
-    <span class="pv-pill pv-pill-queue">${PV_SVG.clock}<span data-queue-pv>×2 ~30s</span></span>
+    <span class="pv-pill pv-pill-queue">${PV_SVG.clock}<span data-queue-pv>×2 30s</span></span>
   </div>`,
   showRequestMetrics: `<div class="pv-req-line">
     <div class="pv-pill pv-req-pill"><span>TTFT 1.0s–3.0s</span><span><b>100.0 tok/s</b></span></div>
@@ -1441,7 +1441,7 @@ const UI_HTML = `<!DOCTYPE html>
       if (pvWarn) pvWarn.textContent = warnMin + 'm+';
       if (pvCold) pvCold.textContent = coldMin + 'm+';
       const pvQueue = document.querySelector('[data-queue-pv]');
-      if (pvQueue) pvQueue.textContent = '×2 ~' + (prefs.queueWarnSec ?? 30) + 's';
+      if (pvQueue) pvQueue.textContent = '×2 ' + (prefs.queueWarnSec ?? 30) + 's';
       const speedCard = document.querySelector('[data-setting-card="showSpeed"]');
       if (speedCard) speedCard.dataset.speedFx = String(prefs.showSpeed !== false && prefs.speedAnimation === true);
       const speedAnimCard = document.querySelector('[data-setting-card="speedAnimation"]');

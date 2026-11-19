@@ -46,7 +46,7 @@ Shows the remaining 5-hour and weekly quotas and their reset countdowns for the 
 **Both are optional** and share the third footer capsule (request failures take priority when both are active):
 
 - **Request failure capsule**: Appears in red only when a request fails; hover or click it to see the raw error and an explanation in the panel. Reasons shown: quota exhausted, rate limited (429), disconnected, authentication error, service busy and unknown.
-- **First-token wait alert**: An amber capsule appears when a wait reaches the threshold (default `30s`, range `1–999s`). `Wait×2 ~40s` means two intervals reached the threshold this turn, including a current estimate of 40 seconds. Active tools and streaming stop the live clock. Earlier slow waits remain visible in the panel.
+- **First-token wait alert**: An amber capsule appears when a wait reaches the threshold (default `30s`, range `1–999s`). `Wait×2 40s` means two intervals reached the threshold this turn, including a current estimate of 40 seconds. Active tools and streaming stop the live clock. Earlier slow waits remain visible in the panel.
 
 ## Language and appearance
 

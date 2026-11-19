@@ -519,7 +519,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       const liveInt = Math.floor(liveWaitSec);
       const mult = queueCount > 1 ? `×${queueCount}` : '';
       const label = liveExceeded
-        ? `${t.queueShort}${mult} ~${liveInt}s`
+        ? `${t.queueShort}${mult} ${liveInt}s`
         : `${t.queueShort}${mult}`;
       const heading = `${t.queueHeading}${mult ? ' ' + mult : ''}`;
       const baseDetail = t.queueDetail.replace('{count}', String(queueCount)).replace('{sec}', String(thresholdSec));

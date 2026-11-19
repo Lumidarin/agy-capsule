@@ -98,14 +98,14 @@ test('third capsule shows first-token wait alerts with xN multiplier, respects t
   const live1 = ui.alertView({ turnQueue: liveQueue }, { showQueueWarnings: true, queueWarnSec: 30 }, ui.dictionaries['zh-CN'], t0 + 35000, true);
   assert.equal(live1.mode, 'queue');
   assert.equal(live1.visible, true);
-  assert.equal(live1.label, '等待 ~35s');
+  assert.equal(live1.label, '等待 35s');
   assert.equal(live1.heading, '首字等待');
   assert.equal(live1.queueCount, 1);
 
   // Second slow wait in the same turn -> x2 multiplier
   const multi = { ...liveQueue, waits: [32.4], waitingSinceMs: t0 };
   const live2 = ui.alertView({ turnQueue: multi }, { showQueueWarnings: true, queueWarnSec: 30 }, ui.dictionaries['zh-CN'], t0 + 40000, true);
-  assert.equal(live2.label, '等待×2 ~40s');
+  assert.equal(live2.label, '等待×2 40s');
   assert.equal(live2.heading, '首字等待 ×2');
   assert.equal(live2.queueCount, 2);
   assert.match(live2.diagnostic, /32s, 40s\+/);
@@ -148,7 +148,7 @@ test('SQLite snapshot exposes turnQueue regardless of showTurnMetrics', t => {
   assert.deepEqual(snapOn.turnQueue, snapOff.turnQueue);
 });
 
-test('a request TTFT already linked to a pending planner stops its live estimate', () => {
+test('a request TTFT or generating timestamp on a pending planner stops its live estimate', () => {
   const steps = [
     { idx: 10, step_type: 14, status: 3, createdAtMs: 100000 },
     { idx: 11, step_type: 15, status: 2, createdAtMs: 100000 },
@@ -157,6 +157,16 @@ test('a request TTFT already linked to a pending planner stops its live estimate
   const queue = summarizeTurnQueue([request], steps, 10);
   assert.deepEqual(queue.waits, [40]);
   assert.equal(queue.waitingSinceMs, null);
+  assert.equal(queue.hasPendingPlanner, false);
+
+  const generatingSteps = [
+    { idx: 10, step_type: 14, status: 3, createdAtMs: 100000 },
+    { idx: 11, step_type: 15, status: 2, createdAtMs: 100000, generatingAtMs: 140000 },
+  ];
+  const generatingQueue = summarizeTurnQueue([], generatingSteps, 10);
+  assert.deepEqual(generatingQueue.waits, [40]);
+  assert.equal(generatingQueue.waitingSinceMs, null);
+  assert.equal(generatingQueue.hasPendingPlanner, false);
 });
 
 test('a planner explicitly linked only to an earlier turn supplies no current wait', () => {
@@ -171,10 +181,9 @@ test('a planner explicitly linked only to an earlier turn supplies no current wa
   assert.deepEqual(summarizeTurnQueue([oldRequest, current], steps, 20).waits, [40]);
 });
 
-test('tool creation alone cannot start a post-tool waiting clock', () => {
-  const steps = [
-    { idx: 10, step_type: 14, status: 3, createdAtMs: 100000 },
-    { idx: 11, step_type: 132, status: 3, createdAtMs: 110000 },
-  ];
-  assert.equal(summarizeTurnQueue([], steps, 10).waitingSinceMs, null);
+test('missing explicit completion timestamps cannot start a post-step waiting clock', () => {
+  const user = { idx: 10, step_type: 14, status: 3, createdAtMs: 100000 };
+  assert.equal(summarizeTurnQueue([], [user, { idx: 11, step_type: 132, status: 3, createdAtMs: 110000 }], 10).waitingSinceMs, null);
+  assert.equal(summarizeTurnQueue([], [user, { idx: 11, step_type: 132, status: 3, createdAtMs: 110000, completedAtMs: 120000 }], 10).waitingSinceMs, null);
+  assert.equal(summarizeTurnQueue([], [user, { idx: 11, step_type: 15, status: 3, createdAtMs: 110000, completedAtMs: 120000 }], 10).waitingSinceMs, null);
 });

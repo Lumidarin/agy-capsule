@@ -16,7 +16,7 @@ import { installAsyncHostRoutes, installEpipeGuard } from './host_bridge.mjs';
 import { createCdpNoticeManager } from './cdp_notice.mjs';
 
 const settingsStore = createSettingsStore();
-const PANEL_VERSION = 111;
+const PANEL_VERSION = 112;
 const presentation = createPresentation();
 export function getNotifyText(shortcutState, prefs) {
   const t = presentation.dictionaries[prefs?.settingsLanguage] || presentation.dictionaries['zh-CN'];
@@ -1755,9 +1755,13 @@ const UI_HTML = `<!DOCTYPE html>
             lastData.deckCdpInfo.shortcutState = result.shortcutState;
             lastData.deckCdpInfo.canFixShortcut = result.shortcutState === 'missing';
           }
-          shortcutFixMessageKey = result?.ok ? 'cdpFixShortcutDone' : 'cdpFixShortcutAdmin';
+          shortcutFixMessageKey = result?.ok ? 'cdpFixShortcutDone'
+            : result?.reason === 'partial' ? 'cdpFixShortcutPartial'
+            : result?.reason === 'not_found' ? 'cdpFixShortcutNotFound'
+            : result?.reason === 'error' ? 'cdpFixShortcutError'
+            : 'cdpFixShortcutAdmin';
         } catch {
-          shortcutFixMessageKey = 'cdpFixShortcutAdmin';
+          shortcutFixMessageKey = 'cdpFixShortcutError';
         } finally {
           fixingShortcut = false;
           renderHealthNotice();

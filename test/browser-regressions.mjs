@@ -10,6 +10,7 @@ import { UI_HTML } from '../agy-capsule/sidecars/agy_capsule/server.mjs';
 import { DEFAULT_SETTINGS } from '../agy-capsule/sidecars/agy_capsule/settings.mjs';
 import { buildRuntimeBundle, startDeckInjector } from '../agy-capsule/sidecars/agy_capsule/deck_injector.mjs';
 import { readCloudConversationSnapshot } from '../agy-capsule/sidecars/agy_capsule/cloud_telemetry.mjs';
+import { createPresentation } from '../agy-capsule/sidecars/agy_capsule/ui.mjs';
 import { hostFixture } from './cdp-host-fixture.mjs';
 
 const { chromium } = createRequire(import.meta.url)(process.argv[2] || 'playwright');
@@ -232,9 +233,10 @@ await test('Child capsules follow the transcript in side and main views without 
       </aside>
     </div>
   `);
-  await page.evaluate(() => { globalThis.__agyCapsulePresentation = { version: 75 }; });
+  const presentationVersion = createPresentation().version;
+  await page.evaluate(stale => { globalThis.__agyCapsulePresentation = { version: stale }; }, presentationVersion - 1);
   await page.evaluate(buildRuntimeBundle(owner).code);
-  assert.equal(await page.evaluate(() => globalThis.__agyCapsulePresentation.version), 76);
+  assert.equal(await page.evaluate(() => globalThis.__agyCapsulePresentation.version), presentationVersion);
   const state = () => page.evaluate(owner => globalThis.__agyCapsuleDeck.readState(owner), owner);
   const applyMain = (id, data) => page.evaluate(({ owner, id, data }) =>
     globalThis.__agyCapsuleDeck.apply(data, location.pathname, owner, id), { owner, id, data });

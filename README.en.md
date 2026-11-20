@@ -59,6 +59,12 @@ Shows the remaining 5-hour and weekly quotas and their reset countdowns for the 
 
 Subagent conversations show the model used in their last request (read-only), context usage, and request alerts. Each capsule stays hidden when its own data is unavailable; it never substitutes data from the parent conversation.
 
+## Usage history
+
+An optional block at the bottom of the sidebar statistics (controlled from a dedicated section at the bottom of Settings) that adds up the token usage recorded in this product folder's local conversations. **Everything below is optional.**
+
+- **Token activity (off by default)**: Shows today's, this week's, this month's and all-time usage, and an activity map of the past year that switches between Daily (one cell per day) and Weekly (one cell per week); a darker cell means more usage. A narrow sidebar keeps only the most recent weeks. Point at a summary total or a cell to see its request count and the split across uncached input, cache reads, cache writes and output.
+
 ## Language and appearance
 
 - **Settings language**: English, Simplified Chinese, Traditional Chinese. The language of the settings page.
@@ -123,6 +129,7 @@ From the repository folder, run `sh install.sh` to install, `sh update.sh` to up
 - **Turn metrics** start at your latest message; elapsed time includes queueing, waiting and tool execution.
 - **Cache expiry alerts are only a guide**: the cache state (yellow at 3 minutes, expired at 4 by default; configurable in Settings) is estimated locally from the time since the last turn; actual cache hits depend on the server.
 - **First-token wait alert** combines reported request TTFT with local step timing. The live estimate may start when processing the message begins or after a previous step finishes; it does not use the time the message was queued. The cause is unknown. The count resets when processing the next message begins.
+- **Usage history** adds up the uncached input, cache reads, cache writes and output that each model request recorded in the current product folder's local conversation databases. Totals include cache reads (which usually dominate long conversations and do not convert directly to quota consumption) and are not a bill. Only conversations in the current product folder are counted; deleted conversations are excluded (so all-time totals drop if chats are removed), and a response stored in more than one conversation file counts once. Days follow the local time zone and weeks start on Monday. Point at a summary total or activity cell to see the four-part breakdown. Conversations are read incrementally only while the option is on and the sidebar statistics are open: idle closed databases without a non-empty `-wal` are opened with `immutable=1` to avoid leaving stray `-wal`/`-shm` files, while active or recently modified databases use plain read-only with before/after `.db`/`-wal` fingerprint verification (discarding torn mid-read writes for the next scan). Totals stay in memory and are neither written to disk nor sent anywhere.
 
 <details>
 <summary>Details</summary>
@@ -167,6 +174,7 @@ Issues and pull requests are welcome. See the [contribution guide](./CONTRIBUTIN
 1. **Inspired by @z21100644 ([PR #1](https://github.com/Lumidarin/agy-capsule/pull/1))**: Thanks for the ideas behind multilingual support, parts of the panel design, click-to-pin, active-model highlighting, generation metrics and speed effects, consistent `K` / `M` token formatting, cache and quota tooltips, context overload alerts, request error classification, and hiding absent quota windows. This version also drew on style isolation, SQLite read caching, incremental CDP updates, installation and maintenance, and Sidecar auto-reload, reimplemented to fit this project. It does not include seven-category context estimates or attachment scanning. Separate settings and display languages, independent appearance controls, the request failure capsule, the new footer's collapse order, turn metrics, and Sidebar interactions were designed separately for this release.
 2. **Inspired by @Krwaby123 ([PR #2](https://github.com/Lumidarin/agy-capsule/pull/2))**: Thanks for reporting quota panel overflow with page-translation extensions and proposing shared column alignment with widths that adapt to longer translations. This version uses a different grid across quota groups and marks percentages and countdowns as not translatable. Chinese countdowns are still available in Settings.
 3. **Inspired by [antigravity-Codex-Claude-effort-slider](https://github.com/LLYSH-HANNARI/antigravity-Codex-Claude-effort-slider)**: Thanks for the approach of reading host model options from the Antigravity model button's React fiber tree and submitting a model + effort pair in one step. Reimplemented here on top of agy-capsule's CDP injector with Antigravity 2.33 and new-conversation support, hover effort submenus, effort inheritance, and customizable model visibility.
+4. **Inspired by [wycocoyu/agy-context-dashboard](https://github.com/wycocoyu/agy-context-dashboard) (MIT)**: The daily / weekly activity map of the usage history follows the idea of that project's usage window, reimplemented to fit this project: it reads the local conversation databases directly, without calling the local API or keeping a ledger of its own.
 
 ## License
 

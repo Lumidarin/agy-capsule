@@ -47,7 +47,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       detail_auth_error: 'The request failed authentication or permission checks. Check sign-in and account access.',
       detail_service_unavailable: 'The model service is temporarily unavailable. Retry later or switch models.',
       detail_unknown: 'The model request failed, but the reported information does not identify a known cause.',
-      showSpeed: 'Generation speed', showRequestMetrics: 'Last request',
+      showSpeed: 'Generation speed', showRequestMetrics: 'Last request', showUsageActivity: 'Token activity',
       speedAnimation: 'Effects',
       saveFailed: 'Could not save. Please try again.',
       panelAuthFailed: 'This panel is not authorized and cannot display statistics. Close it and reopen agy-capsule from Antigravity. (S1)',
@@ -74,11 +74,12 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       outputTip: "Output of latest request",
       ttftTip: "First-token wait to total duration of the latest request.",
       totalTimeTip: "Request duration (TTFT + stream); excludes tool execution.",
-      appearanceSection: 'Appearance', featuresSection: 'Features',
+      appearanceSection: 'Appearance', featuresSection: 'Features', usageSection: 'Usage history',
       languageScopeNote: "These only change agy-capsule's own panels. They don't translate Antigravity itself.",
       speedPairTip: 'Capsule speed: last completed request in the current turn (— until ready). Effects: breathing dot while running; holds speed color 15s after stopping (≥25 green, 10–25 yellow, <10 red).',
       requestSectionTip: 'Shows Last request (TTFT–total duration and generation speed of the latest recorded call) in panels. Independent of capsule speed.',
       turnSectionTip: 'Aggregates requests, elapsed wall time, write, and thinking tokens from your latest user message to completion.',
+      usageSectionTip: 'Reads local conversation databases in the current product folder only when enabled and Statistics is open. Totals include cache reads (no direct conversion to quota), exclude deleted chats, stay in memory only, and are not a bill.',
       panelLayout: 'Panel height', naturalLayout: 'Natural', matchedLayout: 'Matched',
       density: 'Panel spacing', compact: 'Compact', standard: 'Standard', spacious: 'Spacious',
       quotaIndicator: 'Quota indicator', cacheIndicator: 'Cache indicator', cacheIndicatorIcon: 'Icon', ring: 'Ring', bar: 'Bar',
@@ -132,7 +133,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       detail_auth_error: '本次请求未通过验证或权限检查，请检查登录状态和账号权限。',
       detail_service_unavailable: '模型服务暂不可用，可稍后重试或切换其他模型。',
       detail_unknown: '本次模型请求失败，但报告的信息不足以识别已知原因。',
-      showSpeed: '生成速度', showRequestMetrics: '最近请求',
+      showSpeed: '生成速度', showRequestMetrics: '最近请求', showUsageActivity: 'Token 活动',
       speedAnimation: '动效',
       saveFailed: '保存失败，请重试。',
       panelAuthFailed: '此面板未获授权，无法显示统计。请关闭侧栏，再从 Antigravity 中重新打开 agy-capsule。（S1）',
@@ -159,11 +160,12 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       outputTip: "最近一次请求输出",
       ttftTip: "首字等待耗时 – 单次请求总耗时（已包含首字等待）。",
       totalTimeTip: "请求总耗时（首字等待 + 流式输出，不含工具执行）。",
-      appearanceSection: '外观', featuresSection: '功能',
+      appearanceSection: '外观', featuresSection: '功能', usageSection: '用量统计',
       languageScopeNote: '只影响 agy-capsule 自己的界面，不会翻译 Antigravity 本身。',
       speedPairTip: '底栏速度：本轮最近一次已完成请求的速度（未完成显示 —）。动效：运行中圆点呼吸，结束后保色 15 秒再变灰（≥25 绿、10–25 黄、<10 红）。',
       requestSectionTip: '在面板展示最近一次请求的 TTFT–总耗时与生成速度，与底栏胶囊独立。',
       turnSectionTip: '从最近一条用户消息到结束，按整轮累计请求数、耗时、写入与思考。',
+      usageSectionTip: '仅在开启且打开统计页时读取当前产品目录的本机对话文件，结果不落盘、不上传。合计包含缓存读取（与额度消耗无直接换算），不含已删除对话，不等于账单。',
       panelLayout: '面板高度', naturalLayout: '自然高度', matchedLayout: '对齐高度',
       density: '面板间距', compact: '紧凑', standard: '标准', spacious: '舒展',
       quotaIndicator: '额度图形', cacheIndicator: '缓存图形', cacheIndicatorIcon: '图标', ring: '圆环', bar: '进度条',
@@ -217,7 +219,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       detail_auth_error: '本次請求未通過驗證或權限檢查，請檢查登入狀態和帳號權限。',
       detail_service_unavailable: '模型服務暫不可用，可稍後重試或切換其他模型。',
       detail_unknown: '本次模型請求失敗，但回報的資訊不足以識別已知原因。',
-      showSpeed: '生成速度', showRequestMetrics: '最近請求',
+      showSpeed: '生成速度', showRequestMetrics: '最近請求', showUsageActivity: 'Token 活動',
       speedAnimation: '動效',
       saveFailed: '儲存失敗，請重試。',
       panelAuthFailed: '此面板未獲授權，無法顯示統計。請關閉側欄，再從 Antigravity 中重新開啟 agy-capsule。（S1）',
@@ -244,11 +246,12 @@ export function createPresentation(turnFactory = createTurnPresentation) {
       outputTip: "最近一次請求輸出",
       ttftTip: "首字等待耗時 – 單次請求總耗時（已包含首字等待）。",
       totalTimeTip: "請求總耗時（首字等待 + 串流輸出，不含工具執行）。",
-      appearanceSection: '外觀', featuresSection: '功能',
+      appearanceSection: '外觀', featuresSection: '功能', usageSection: '用量統計',
       languageScopeNote: '只影響 agy-capsule 自己的介面，不會翻譯 Antigravity 本身。',
       speedPairTip: '底欄速度：本輪最近一次已完成請求的速度（未完成顯示 —）。動效：執行中圓點呼吸，結束後保色 15 秒再變灰（≥25 綠、10–25 黃、<10 紅）。',
       requestSectionTip: '於面板展示最近一次請求的 TTFT–總耗時與生成速度，與底欄膠囊獨立。',
       turnSectionTip: '從最近一條使用者訊息到結束，依整輪累計請求數、耗時、寫入與思考。',
+      usageSectionTip: '僅在開啟且開啟統計頁時讀取目前產品目錄的本機對話檔案，結果不落碟、不上傳。合計包含快取讀取（與額度消耗無直接換算），不含已刪除對話，不等於帳單。',
       panelLayout: '面板高度', naturalLayout: '自然高度', matchedLayout: '對齊高度',
       density: '面板間距', compact: '緊湊', standard: '標準', spacious: '舒展',
       quotaIndicator: '額度圖形', cacheIndicator: '快取圖形', cacheIndicatorIcon: '圖示', ring: '圓環', bar: '進度條',
@@ -654,7 +657,7 @@ export function createPresentation(turnFactory = createTurnPresentation) {
     return t;
   }
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  return { version: 76, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens, cacheThresholds, makeCacheRingSvg, cacheTooltip, cacheView, contextBreakdown, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, quotaColor, makeRingSvg, formatGroupTitle, formatBucketLabel, activeGroupColor, quotaView, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
+  return { version: 77, dictionaries, locale, systemLocale, apply, appearance, formatReset, escapeHtml, formatTokens, cacheThresholds, makeCacheRingSvg, cacheTooltip, cacheView, contextBreakdown, contextTooltips, renderContextTooltips, quotaTooltip, applyQuotaTooltips, quotaColor, makeRingSvg, formatGroupTitle, formatBucketLabel, activeGroupColor, quotaView, alertView, renderAlerts, generationText, generationMarkup, renderGeneration, ...turnMethods };
 }
 
-export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 76) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;
+export const getPresentationScript = () => `if (globalThis.__agyCapsulePresentation?.version !== 77) globalThis.__agyCapsulePresentation = (${createPresentation.toString()})(${createTurnPresentation.toString()});`;

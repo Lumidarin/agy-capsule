@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, statSync, existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, basename, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { startDeckInjector } from './deck_injector.mjs';
 import { createSettingsStore, DEFAULT_SETTINGS } from './settings.mjs';
 import { createPresentation, getPresentationScript } from './ui.mjs';
@@ -15,10 +15,12 @@ import { summarizeTurnMetrics } from './turn_metrics.mjs';
 import { installAsyncHostRoutes, installEpipeGuard } from './host_bridge.mjs';
 import { createCdpNoticeManager } from './cdp_notice.mjs';
 import { createCloudTelemetryStore } from './cloud_telemetry.mjs';
+import { createUsageHistory } from './usage_history.mjs';
+import { createUsagePresentation } from './usage_ui.mjs';
 
 const settingsStore = createSettingsStore();
 const cloudTelemetryStore = createCloudTelemetryStore();
-const PANEL_VERSION = 128;
+const PANEL_VERSION = 129;
 const presentation = createPresentation();
 export function getNotifyText(shortcutState, prefs) {
   const t = presentation.dictionaries[prefs?.settingsLanguage] || presentation.dictionaries['zh-CN'];
@@ -312,6 +314,30 @@ async function makeEmptyContextResult(health = null) {
   };
 }
 
+const ACTIVE_CONV_TTL_MS = 60_000;
+const recentActiveConversations = new Map();
+function touchActiveConversation(id) {
+  if (typeof id === 'string' && /^[0-9a-zA-Z_-]+$/.test(id)) {
+    const now = Date.now();
+    recentActiveConversations.set(id, now);
+    if (recentActiveConversations.size > 16) {
+      const cutoff = now - ACTIVE_CONV_TTL_MS;
+      for (const [entryId, seenAt] of recentActiveConversations) {
+        if (seenAt < cutoff) recentActiveConversations.delete(entryId);
+      }
+    }
+  }
+}
+function getActiveConversationIds() {
+  const cutoff = Date.now() - ACTIVE_CONV_TTL_MS;
+  for (const [id, seenAt] of recentActiveConversations) {
+    if (seenAt < cutoff) recentActiveConversations.delete(id);
+  }
+  const active = new Set(recentActiveConversations.keys());
+  if (lastDeckConvId) active.add(lastDeckConvId);
+  return [...active];
+}
+
 async function inspectConversation(convId, exact = false, subagentOnly = false) {
   if (exact && !subagentOnly) lastDeckConvId = convId || '';
   if (subagentOnly && !convId) return null;
@@ -320,6 +346,7 @@ async function inspectConversation(convId, exact = false, subagentOnly = false) 
 }
 
 async function readSelectedConversation(convId, allowLatest, subagentOnly = false) {
+  touchActiveConversation(convId);
   const dbPath = resolveConversationDb(convId, allowLatest);
   if (subagentOnly && !dbPath) return null;
   const prefs = settingsStore.read();
@@ -336,6 +363,7 @@ async function readSelectedConversation(convId, allowLatest, subagentOnly = fals
     }
     return await makeEmptyContextResult(conversationDirs.some(dir => statSync(dir, { throwIfNoEntry: false })?.isDirectory()) ? null : { code: 'S3' });
   }
+  touchActiveConversation(basename(dbPath, '.db'));
 
   const snapshot = conversationCache.read(dbPath, prefs.showTurnMetrics);
   if (subagentOnly && !snapshot?.subagent) return null;
@@ -535,6 +563,97 @@ function readConversationSnapshot(dbPath, includeTurnMetrics = true) {
   };
 }
 
+const MIN_USAGE_EPOCH_S = 1577836800; // 2020-01-01T00:00:00Z
+const isValidEpochSec = value => Number.isSafeInteger(value) && value >= MIN_USAGE_EPOCH_S && value < 4e9;
+
+// One model request for the usage history: when it started and what it consumed.
+// Field numbers follow CortexStepGeneratorMetadata.chat_model (1) -> ChatModelMetadata
+// .usage (4) and optional .chat_start_metadata (9).created_at (4); a step's own created_at
+// is CortexStepMetadata field 1.
+function parseUsageRow(data, stepMetadata) {
+  // Views, not copies: a scan walks every stored request.
+  const bytes = value => (value instanceof Uint8Array ? Buffer.from(value.buffer, value.byteOffset, value.byteLength) : Buffer.alloc(0));
+  const top = parsePbMap(bytes(data));
+  const chat = parsePbMap(bytes(top.get(1)?.[0]));
+  const usage = parsePbMap(bytes(chat.get(4)?.[0]));
+  const count = field => (Number.isSafeInteger(usage.get(field)?.[0]) ? usage.get(field)[0] : 0);
+  const text = field => bytes(usage.get(field)?.[0]).toString('utf8');
+  // input_tokens (2) is the uncached part; cache reads (5) and writes (4) are reported beside it.
+  const tokens = { uncached: count(2), cacheRead: count(5), cacheWrite: count(4), output: count(3) };
+  // Preflight rows and failed attempts report no consumption.
+  if (!Object.values(tokens).some(Boolean)) return null;
+  const seconds = stamp => parsePbMap(bytes(stamp)).get(1)?.[0];
+  let startedAt = seconds(parsePbMap(bytes(chat.get(9)?.[0])).get(4)?.[0]);
+  if (!isValidEpochSec(startedAt)) {
+    // Most rows carry no chat_start_metadata.created_at; date them by the first available step.
+    startedAt = null;
+    for (const entry of top.get(2) || []) {
+      if (typeof entry === 'number') {
+        const candidate = seconds(parsePbMap(bytes(stepMetadata(entry))).get(1)?.[0]);
+        if (isValidEpochSec(candidate)) { startedAt = candidate; break; }
+      } else if (entry?.length) {
+        let offset = 0;
+        while (offset < entry.length) {
+          let stepIndex;
+          try {
+            [stepIndex, offset] = readVarint(entry, offset);
+          } catch { break; }
+          const candidate = seconds(parsePbMap(bytes(stepMetadata(stepIndex))).get(1)?.[0]);
+          if (isValidEpochSec(candidate)) { startedAt = candidate; break; }
+        }
+        if (startedAt !== null) break;
+      }
+    }
+  }
+  // response_id (11), else message_id (7), within api_provider (6).
+  const responseId = text(11);
+  const messageId = text(7);
+  return {
+    at: isValidEpochSec(startedAt) ? startedAt * 1000 : null,
+    id: responseId ? `r${count(6)}:${responseId}` : messageId ? `m${count(6)}:${messageId}` : '',
+    ...tokens,
+  };
+}
+
+function readConversationUsage(dbPath, { immutable = true } = {}) {
+  // Closed, idle conversations without a non-empty WAL are opened immutable so SQLite does not
+  // leave stray -wal/-shm files beside them; active or recently modified ones use plain read-only.
+  const hasActiveWal = (statSync(dbPath + '-wal', { throwIfNoEntry: false })?.size || 0) > 0;
+  const useImmutable = immutable && !hasActiveWal;
+  let location = dbPath;
+  if (useImmutable) {
+    location = pathToFileURL(dbPath);
+    location.searchParams.set('immutable', '1');
+  }
+  const db = new DatabaseSync(location, { readOnly: true, timeout: 150 });
+  try {
+    if (!useImmutable) db.exec('PRAGMA busy_timeout = 150');
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='gen_metadata'").get()) return [];
+    const hasSteps = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='steps'").get());
+    let stepRow = null;
+    const stepMetadata = hasSteps
+      ? index => (stepRow ??= db.prepare('SELECT metadata FROM steps WHERE idx = ?')).get(index)?.metadata
+      : () => undefined;
+    return db.prepare('SELECT data FROM gen_metadata ORDER BY idx ASC').all()
+      .map(row => parseUsageRow(row.data, stepMetadata))
+      .filter(Boolean);
+  } finally {
+    db.close();
+  }
+}
+
+const usageHistory = createUsageHistory({
+  directories: conversationDirs,
+  readRequests: readConversationUsage,
+  getActiveIds: getActiveConversationIds,
+});
+
+// Conversations are scanned only while a setting shows their history.
+async function inspectUsage(prefs = settingsStore.read(), activeConversationId = '') {
+  if (prefs.showUsageActivity !== true) return { enabled: false };
+  return { enabled: true, ...await usageHistory.read({ activeId: activeConversationId }) };
+}
+
 const PV_SVG = {
   db: '<svg class="pv-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>',
   clock: '<svg class="pv-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>',
@@ -576,6 +695,7 @@ const PV_CARD_PREVIEW = {
   showRequestMetrics: `<div class="pv-req-line">
     <div class="pv-pill pv-req-pill"><span>TTFT 1.0s–3.0s</span><span><b>100.0 tok/s</b></span></div>
   </div>`,
+  showUsageActivity: `<div class="pv-usage-heat">${[0, 1, 0, 2, 3, 1, 0, 4, 2, 1, 3, 0, 1, 2, 4, 3, 1, 2].map(level => `<i class="usage-cell" data-level="${level}"></i>`).join('')}</div>`,
 };
 
 const renderCheckCard = ({ id, helpId = id, key, tip = '', checked = false, preview = PV_CARD_PREVIEW[key] || '' }) => `
@@ -920,6 +1040,8 @@ const UI_HTML = `<!DOCTYPE html>
     .nowrap { white-space: nowrap; }
     .settings-scope { margin-top: 8px; padding: 10px 0 4px; border-top: 1px solid var(--border, rgba(142,142,147,.22)); font-size: 12px; font-weight: 600; color: var(--muted-foreground, #8e8e93); letter-spacing: .01em; }
     .settings-scope.metric-setting { position: relative; }
+    .settings-scope.metric-setting > .setting-head:focus-visible { outline: 2px solid #388bfd; outline-offset: 2px; border-radius: 4px; }
+    .settings-scope .metric-help { font-weight: 400; font-size: 12px; letter-spacing: normal; }
     .settings-scope-title { font-size: 12px; font-weight: 600; color: var(--muted-foreground, #8e8e93); }
     .setting-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 7px 0; border-top: 1px solid color-mix(in srgb, var(--border, rgba(142,142,147,.24)) 55%, transparent); background: transparent; }
     .settings > .setting-card:first-child, .settings-scope + .setting-card { border-top: 0; }
@@ -1106,12 +1228,49 @@ const UI_HTML = `<!DOCTYPE html>
     .quota-group:not(:has(.quota-mid:not(:empty))) .quota-line1 { grid-template-columns: 54px minmax(0, 1fr); }
     body[data-language^="zh"] .quota-group:not(:has(.quota-mid:not(:empty))) .quota-line1 { grid-template-columns: 42px minmax(0, 1fr); }
     .quota-group:not(:has(.quota-mid:not(:empty))) .quota-mid { display: none; }
+    /* Optional usage history below the statistics: hidden, unread and unfetched while it is off. */
+    .stats-usage { grid-column: 1 / -1; min-width: 0; margin-top: var(--agy-section-gap, 6px); padding-top: calc(var(--agy-section-gap, 6px) + 2px); border-top: 1px solid var(--border, rgba(142, 142, 147, 0.24)); }
+    .stats-usage[hidden] { display: none; }
+    .usage-block { display: flex; flex-direction: column; gap: var(--agy-section-gap, 6px); min-width: 0; container-type: inline-size; container-name: usage; font-variant-numeric: tabular-nums; }
+    .usage-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .usage-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--foreground, #ebebeb); color: color-mix(in srgb, var(--foreground, #ebebeb) 88%, transparent); }
+    .usage-seg { display: inline-flex; flex-shrink: 0; gap: 2px; padding: 2px; border-radius: 6px; background: color-mix(in srgb, var(--foreground, #ebebeb) 6%, transparent); border: 1px solid color-mix(in srgb, var(--foreground, #ebebeb) 12%, transparent); }
+    .usage-seg button { padding: 1px 7px; border: 0; border-radius: 4px; background: transparent; color: var(--muted-foreground, #8e8e93); font: inherit; font-size: 11.5px; cursor: pointer; }
+    .usage-seg button:hover, .usage-seg button[aria-pressed="true"] { color: var(--foreground, #ebebeb); }
+    .usage-seg button[aria-pressed="true"] { background: color-mix(in srgb, var(--foreground, #ebebeb) 14%, var(--card, #222225)); }
+    .usage-seg button:focus-visible { outline: 2px solid #388bfd; outline-offset: 1px; }
+    .usage-note, .usage-foot, .usage-total > span { font-size: 11.5px; color: var(--muted-foreground, #8e8e93); }
+    .usage-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+    .usage-total { display: flex; flex-direction: column; min-width: 0; }
+    .usage-total > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .usage-total > b { overflow: hidden; text-overflow: ellipsis; font-weight: 500; white-space: nowrap; color: var(--foreground, #ebebeb); color: color-mix(in srgb, var(--foreground, #ebebeb) 88%, transparent); }
+    /* One column per week, newest on the right; a block too narrow for a year drops the oldest weeks. */
+    .usage-heat { --usage-cell: 10px; display: flex; justify-content: flex-end; gap: 2px; width: fit-content; max-width: 100%; padding-top: 14px; overflow: hidden; }
+    .usage-heat-col { position: relative; flex: none; display: flex; flex-direction: column; gap: 2px; }
+    .usage-heat-month { position: absolute; left: 0; top: -14px; font-size: 10px; line-height: 12px; white-space: nowrap; color: var(--muted-foreground, #8e8e93); }
+    .usage-heat-col:nth-last-child(-n+2) .usage-heat-month { left: auto; right: 0; }
+    .usage-cell { display: block; flex: none; width: var(--usage-cell, 8px); height: var(--usage-cell, 8px); border-radius: 2px; background: color-mix(in srgb, var(--foreground, #ebebeb) 9%, transparent); }
+    .usage-heat[data-scale="week"] .usage-cell { height: calc(7 * var(--usage-cell) + 12px); }
+    .usage-cell[data-level="1"] { background: color-mix(in srgb, #388bfd 30%, transparent); }
+    .usage-cell[data-level="2"] { background: color-mix(in srgb, #388bfd 52%, transparent); }
+    .usage-cell[data-level="3"] { background: color-mix(in srgb, #388bfd 76%, transparent); }
+    .usage-cell[data-level="4"] { background: #388bfd; }
+    .usage-cell[data-future] { visibility: hidden; }
+    @container usage (width < 634px) { .usage-heat-col:nth-last-child(n+40) { display: none; } }
+    @container usage (width < 466px) { .usage-heat-col:nth-last-child(n+27) { display: none; } }
+    @container usage (width < 310px) { .usage-heat-col:nth-last-child(n+22) { display: none; } }
+    @container usage (width < 250px) { .usage-heat-col:nth-last-child(n+18) { display: none; } }
+    @container usage (width < 202px) { .usage-heat-col:nth-last-child(n+14) { display: none; } }
+    .usage-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .usage-foot > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .usage-legend { display: inline-flex; flex-shrink: 0; align-items: center; gap: 3px; }
     @container stats (min-width: 420px) {
       .stats-layout {
         gap: calc(var(--agy-section-gap, 6px) + 6px);
       }
       .stats-context,
-      .panel .quota-group {
+      .panel .quota-group,
+      .usage-block {
         padding: calc(var(--agy-pad-y, 8px) + 2px) calc(var(--agy-pad-x, 10px) + 2px);
         border-radius: 8px;
         border: 1px solid color-mix(in srgb, var(--border, rgba(142, 142, 147, 0.24)) 72%, transparent);
@@ -1119,6 +1278,11 @@ const UI_HTML = `<!DOCTYPE html>
       }
       .divider {
         display: none;
+      }
+      .stats-usage {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: 0;
       }
       .stats-quota {
         grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
@@ -1168,6 +1332,10 @@ const UI_HTML = `<!DOCTYPE html>
     body[data-label-case="lowercase"] .panel .item-label,
     body[data-label-case="lowercase"] .panel .turn-bar-label,
     body[data-label-case="lowercase"] .panel .turn-bar-short,
+    body[data-label-case="lowercase"] .panel .usage-title,
+    body[data-label-case="lowercase"] .panel .usage-seg button,
+    body[data-label-case="lowercase"] .panel .usage-total > span,
+    body[data-label-case="lowercase"] .panel .usage-legend,
     body[data-label-case="lowercase"] .panel .quota-label { text-transform: lowercase; }
     .cdp-notice { max-width: 1120px; margin: 0 auto 10px; padding: 8px 10px; border-radius: 7px; border: 1px solid color-mix(in srgb, #e0a030 45%, transparent); background: color-mix(in srgb, #e0a030 8%, var(--background, #141414)); font-size: 12px; color: var(--muted-foreground, #8e8e93); }
     #health-code { text-align: end; font-size: 12px; color: var(--muted-foreground, #8e8e93); }
@@ -1220,6 +1388,8 @@ const UI_HTML = `<!DOCTYPE html>
     .pv-model-item { width: auto; max-width: 100%; min-height: 22px; justify-content: center; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pv-model-item[data-active="true"] { border-color: #4ea84e; background: color-mix(in srgb, #4ea84e 14%, var(--card, #222225)); }
     .pv-model-empty { font-size: 11.5px; color: var(--muted-foreground, #8e8e93); padding: 2px 2px 0; }
+    .pv-usage-heat { display: flex; gap: 2px; transition: opacity .18s ease; }
+    [data-setting-card="showUsageActivity"][data-checked="false"] .pv-usage-heat { opacity: .4; }
     @media(pointer:coarse) { .pv-swatch { min-height: 40px; } }
   </style>
 </head>
@@ -1300,6 +1470,9 @@ const UI_HTML = `<!DOCTYPE html>
       </section>
       <div class="divider"></div>
       <div id="quota-root" class="stats-quota"></div>
+      <section class="stats-usage" id="usage-root" hidden>
+        <div class="usage-block" id="usage-activity"></div>
+      </section>
     </div>
   </div>
 
@@ -1494,12 +1667,22 @@ const UI_HTML = `<!DOCTYPE html>
       </div>
       <div class="setting-preview" aria-hidden="true">${PV_CARD_PREVIEW.showQueueWarnings}</div>
     </div>
+
+    <div class="settings-scope metric-setting" data-settings-scope="usage">
+      <div class="setting-head" tabindex="0" aria-describedby="help-usage-scope">
+        <span class="settings-scope-title" data-i18n="usageSection"></span>
+        <span class="setting-help-dot" aria-hidden="true">?</span>
+      </div>
+      <div class="metric-help" id="help-usage-scope" role="tooltip" data-i18n="usageSectionTip"></div>
+    </div>
+    ${renderCheckCard({ id: 'setting-usage-activity', key: 'showUsageActivity', checked: DEFAULT_SETTINGS.showUsageActivity })}
   </section>
 
   </main>
   <script>
     ${getPresentationScript()}
     const presentation = globalThis.__agyCapsulePresentation;
+    const usageUi = (${createUsagePresentation.toString()})(presentation.formatTokens, presentation.escapeHtml);
     ${renderFieldEditor.toString()}
     let prefs = ${JSON.stringify(DEFAULT_SETTINGS)};
     let prefsSig = JSON.stringify(prefs);
@@ -1510,6 +1693,49 @@ const UI_HTML = `<!DOCTYPE html>
     let lastData = null, refreshing = false, refreshFailures = 0;
     let conversationId = null, conversationEpoch = 0;
     let sampleCode = '', sampleCount = 0, healthCode = '';
+    let usageData = null;
+    let usageDueAt = 0;
+    let usageBusy = false;
+    let usageScale = 'day';
+    let usageKey = '';
+    function usageEnabled() { return prefs.showUsageActivity === true; }
+    function renderUsage() {
+      const root = document.getElementById('usage-root');
+      const hidden = !usageEnabled();
+      if (root.hidden !== hidden) root.hidden = hidden;
+      if (hidden) return;
+      const view = { today: usageUi.localDay(Date.now()), scale: usageScale, language: document.body.dataset.language };
+      const key = JSON.stringify([usageData, view]);
+      if (key === usageKey) return;
+      usageKey = key;
+      document.getElementById('usage-activity').innerHTML = usageUi.activityHtml(usageData, view);
+    }
+    async function refreshUsage() {
+      if (usageBusy || savingSettings || panelLocked || !usageEnabled() || sidebarView !== 'stats' || Date.now() < usageDueAt) return;
+      usageBusy = true;
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const convId = window.sidecar?.conversationId ?? urlParams.get('conversationId') ?? '';
+        // A first scan of a long history can take a while; give up on a request that hangs.
+        const d = await (await postApi('/api/usage', { conversationId: convId }, AbortSignal.timeout(30000))).json();
+        if (d?.enabled === false) { usageDueAt = 0; return; }
+        if (!Array.isArray(d.days)) throw new Error('usage unavailable');
+        usageData = d;
+        usageDueAt = Date.now() + 60000;
+        renderUsage();
+      } catch {
+        usageDueAt = Date.now() + 10000;
+      } finally {
+        usageBusy = false;
+      }
+    }
+    document.getElementById('usage-root').addEventListener('click', event => {
+      const scale = event.target.closest('[data-usage-scale]')?.dataset.usageScale;
+      if (!scale || scale === usageScale) return;
+      usageScale = scale;
+      renderUsage();
+      document.querySelector('[data-usage-scale="' + scale + '"]')?.focus();
+    });
     const sidebarTabs = document.querySelector('.sidebar-tabs');
     const panel = document.querySelector('.panel');
     let statsSig, cacheSig, quotaSig;
@@ -1663,6 +1889,7 @@ const UI_HTML = `<!DOCTYPE html>
         swatch.removeAttribute('title');
       }
       syncConversation();
+      renderUsage();
       if (sidebarView === 'stats') replayStats();
       if (lastData) renderHealthNotice();
     }
@@ -1686,7 +1913,10 @@ const UI_HTML = `<!DOCTYPE html>
       return res;
     }
     let pendingPatch = null;
+    let savedUsageTouched = false;
+    function touchesUsageSetting(patch) { return patch != null && 'showUsageActivity' in patch; }
     async function saveSettings(patch) {
+        if (touchesUsageSetting(patch)) savedUsageTouched = true;
         if (savingSettings) {
           pendingPatch = { ...(pendingPatch || {}), ...patch };
           settingsEpoch++;
@@ -1718,9 +1948,15 @@ const UI_HTML = `<!DOCTYPE html>
           applySettings(previous, true);
           if (!panelLocked) window.alert(settingsLabels.saveFailed);
         } finally {
+          const triggerUsage = savedUsageTouched;
+          savedUsageTouched = false;
           settingsEpoch++;
           savingSettings = false;
           updateControlState();
+          if (triggerUsage && usageEnabled()) {
+            usageDueAt = 0;
+            void refreshUsage();
+          }
         }
     }
     for (const select of document.querySelectorAll('.settings select[name], .settings input[name]')) {
@@ -1939,6 +2175,8 @@ const UI_HTML = `<!DOCTYPE html>
         syncConversation();
         return requestedConversationEpoch === conversationEpoch;
       };
+      // The usage history keeps its own, slower pace and never holds up this poll.
+      void refreshUsage();
       try {
         const res = await postApi('/api/context', { conversationId: convId }, AbortSignal.timeout(6000), isCurrent);
         if (!res) return;
@@ -2162,7 +2400,7 @@ const UI_HTML = `<!DOCTYPE html>
 </html>`;
 
 const rememberCloudTelemetry = cloudTelemetryStore.set;
-export { inspectConversation, UI_HTML, parseGenRow, readConversationSnapshot, rememberCloudTelemetry };
+export { inspectConversation, inspectUsage, UI_HTML, parseGenRow, parseUsageRow, readConversationSnapshot, readConversationUsage, rememberCloudTelemetry };
 
 const isMain = (() => {
   try {
@@ -2201,6 +2439,7 @@ export async function startPanel(loadSdk = () => import('sidecar_sdk'), env = pr
       availableModels: deckInjector?.models?.(conversationId) ?? [],
     };
   }, 'POST');
+  app.api('/api/usage', (data) => inspectUsage(settingsStore.read(), data?.conversationId ?? app.config?.conversationId ?? ''), 'POST');
   app.api('/api/settings', (data) => settingsStore.update(data), 'POST');
   app.api('/api/fix-cdp-shortcut', () => cdpNotice.fixShortcuts(), 'POST');
   const ready = app.run();

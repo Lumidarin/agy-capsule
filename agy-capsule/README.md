@@ -39,7 +39,9 @@ Provides **Statistics** and **Settings** tabs at the top (settings live exclusiv
   - **Context breakdown**: `true`; `columns` (default) or `rows`, `square` (default) or `dot` markers, with toggleable and drag-reorderable column fields (`Name`: `true`, `Value`: `true`, `%`: `false`; default order `label,value,percent`)
   - **Last request**: `true` (shows `TTFT–total duration` range and generation speed)
   - **Turn metrics**: `false`; `columns` (default) or `rows`, `square` (default) or `dot` markers
-  - **First-token wait alert**: `true` with configurable threshold (`queueWarnSec`: `30s`, `1–999`) at the end of Settings
+  - **First-token wait alert**: `true` with configurable threshold (`queueWarnSec`: `30s`, `1–999`)
+- **Usage history** (dedicated section at the bottom of Settings, with `?` scope tooltip):
+  - **Token activity**: `false` (sidebar statistics only: today / this week / this month / all-time usage and a daily or weekly activity map of the past year, with four-part breakdowns on hover; nothing is read while it is off)
 
 ## Telemetry & Metric Definitions
 
@@ -50,6 +52,7 @@ Provides **Statistics** and **Settings** tabs at the top (settings live exclusiv
 - **Turn metrics**: Aggregates elapsed wall-clock time (including queueing, waits, and tool execution), request count (recorded retries included; pure preflight/injected responses excluded), `Write`, and `Think` tokens starting from the latest sent user message.
 - **Cache expiry estimate**: The warning / cold status (default `3m` / `4m`, configurable in Settings) is estimated locally from elapsed time since the last recorded step; actual cache hits depend on the server.
 - **First-token wait alert** combines reported request TTFT with local step timing. The live estimate may start when processing the message begins or after a previous step finishes; it does not use the time the message was queued. The cause is unknown. The count resets when processing the next message begins.
+- **Usage history**: Sums `input_tokens` (uncached), `cache_read_tokens`, `cache_write_tokens` and `output_tokens` of every recorded model request across `conversations/*.db` in the current product data folder, dated in the local time zone (weeks start on Monday). Totals include cache reads (usually dominant in long chats, with no direct conversion to quota consumption) and are not a bill; deleted conversations are excluded, and a response stored in several files counts once with a deterministic tie-breaker. Databases are read incrementally with event-loop yields and only while enabled and Statistics is open; idle closed databases without a non-empty `-wal` are opened with `immutable=1`, while active or recently modified databases use plain read-only with before/after `.db`/`-wal` fingerprint verification (discarding torn mid-read changes for the next scan). Totals stay in memory only.
 
 ## Install / Update / Uninstall
 
@@ -70,6 +73,7 @@ Run the scripts from the repository root:
 - Selected features and visual/engineering ideas (multi-language support, panel visuals, active-model highlighting, click-to-pin, generation speed/effects, cache & quota tooltips, overload alerts, error classification, absent window hiding, style isolation, SQLite snapshot caching, incremental CDP pushes, and install maintenance) were adapted and reimplemented from [z21100644's PR #1](https://github.com/Lumidarin/agy-capsule/pull/1). Separate display/settings languages, independent appearance controls, the third failure capsule, narrow-width fallback order, turn metrics, and sidebar interactions were designed independently; 7-category context estimates and attachment scanning were not adopted.
 - Quota popover overflow under browser/page translation extensions was reported with a proposed fix in [Krwaby123's PR #2](https://github.com/Lumidarin/agy-capsule/pull/2), resolved here via column alignment and no-translate attributes.
 - Reading host model options from the Antigravity model trigger's React fiber tree for one-step model/effort selection was inspired by [antigravity-Codex-Claude-effort-slider](https://github.com/LLYSH-HANNARI/antigravity-Codex-Claude-effort-slider), reimplemented here via the CDP injector with Antigravity 2.33 / new-chat support, hover effort submenus, effort inheritance, and model list customization.
+- The usage history's daily / weekly activity map follows the idea of the usage window in [wycocoyu/agy-context-dashboard](https://github.com/wycocoyu/agy-context-dashboard) (MIT), reimplemented here on the local conversation databases instead of the local API and without a ledger of its own.
 
 ## License
 

@@ -89,7 +89,7 @@ test('child reads never move the main sidebar and alerts stay in the child execu
   const full = await postContext({ conversationId: 'child' });
   assert.equal(full.contextTokens, 150, 'Full View supplies the child ID even without a composer');
   assert.equal(full.turnMetrics, null);
-  assert.equal(full.uiVersion, 128);
+  assert.equal(full.uiVersion, 129);
   assert.equal((await postContext({ conversationId: 'missing' })).contextTokens, 0, 'no parent fallback for a missing child DB');
   assert.equal((await postContext({ conversationId: '' })).contextTokens, 0, 'an explicitly empty view must not display an old chat');
   assert.equal((await inspectConversation()).contextTokens, 77, 'sidebar reads do not move the CDP composer pointer');

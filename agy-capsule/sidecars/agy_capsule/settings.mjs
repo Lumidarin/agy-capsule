@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'no
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-export const DEFAULT_SETTINGS = Object.freeze({ language: 'en', settingsLanguage: 'zh-CN', panelLayout: 'natural', density: 'compact', quotaIndicator: 'ring', cacheIndicator: 'icon', labelCase: 'lowercase', resetFormat: 'compact', contextLayout: 'columns', turnLayout: 'columns', contextMarker: 'square', turnMarker: 'square', showContextBreakdown: true, columnLabel: true, columnValue: true, columnPercent: false, columnOrder: 'label,value,percent', highlightActiveModel: false, modelEffortPicker: false, keepNativeModelEntry: true, hideModelTags: false, hideDefaultEffort: false, customizeModelList: false, hiddenModels: Object.freeze([]), hideUnavailableQuota: true, showCacheWarnings: true, cacheWarnMin: 3, cacheColdMin: 4, showContextWarnings: true, showRequestErrors: true, notifyCdpRestart: true, showSpeed: true, speedAnimation: false, showRequestMetrics: true, showTurnMetrics: false, showQueueWarnings: true, queueWarnSec: 30, showUsageActivity: false });
+export const DEFAULT_SETTINGS = Object.freeze({ language: 'en', settingsLanguage: 'zh-CN', panelLayout: 'natural', density: 'compact', quotaIndicator: 'ring', cacheIndicator: 'icon', labelCase: 'lowercase', resetFormat: 'compact', contextLayout: 'columns', turnLayout: 'columns', contextMarker: 'square', turnMarker: 'square', showContextBreakdown: true, columnLabel: true, columnValue: true, columnPercent: false, columnOrder: 'label,value,percent', highlightActiveModel: false, modelEffortPicker: false, keepNativeModelEntry: true, hideModelTags: false, hideDefaultEffort: false, customizeModelList: false, hiddenModels: Object.freeze([]), hideUnavailableQuota: true, showCacheWarnings: true, cacheWarnMin: 3, cacheColdMin: 4, showContextWarnings: true, showRequestErrors: true, notifyCdpRestart: true, showSpeed: true, speedAnimation: false, showRequestMetrics: true, showTurnMetrics: false, showQueueWarnings: true, queueWarnSec: 30, showUsageActivity: false, showModelUsage: false });
 const choices = {
   language: ['en', 'zh-CN', 'zh-TW'],
   settingsLanguage: ['en', 'zh-CN', 'zh-TW'],
@@ -38,6 +38,7 @@ const choices = {
   showTurnMetrics: [true, false],
   showQueueWarnings: [true, false],
   showUsageActivity: [true, false],
+  showModelUsage: [true, false],
 };
 const numericRanges = {
   cacheWarnMin: [1, 998],

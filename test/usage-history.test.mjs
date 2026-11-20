@@ -16,10 +16,10 @@ const integer = (field, n) => Buffer.concat([vi(field * 8), vi(n)]);
 const message = (field, data) => Buffer.concat([vi(field * 8 + 2), vi(data.length), data]);
 const text = (field, value) => message(field, Buffer.from(value));
 const stamp = (field, seconds) => message(field, integer(1, seconds));
-// CortexStepGeneratorMetadata: chat_model = 1 { usage = 4, chat_start_metadata = 9 { created_at = 4 } },
-// step_indices = 2.
-const generation = ({ startedAt = 0, usage = [], steps = [] }) => Buffer.concat([
-  message(1, Buffer.concat([message(4, Buffer.concat(usage)), ...(startedAt ? [message(9, stamp(4, startedAt))] : [])])),
+// CortexStepGeneratorMetadata: chat_model = 1 { usage = 4, chat_start_metadata = 9 { created_at = 4 },
+// response_model = 19, model_display_name = 21 }, step_indices = 2.
+const generation = ({ startedAt = 0, usage = [], names = [], steps = [] }) => Buffer.concat([
+  message(1, Buffer.concat([message(4, Buffer.concat(usage)), ...(startedAt ? [message(9, stamp(4, startedAt))] : []), ...names])),
   ...steps,
 ]);
 const temporaryDirectory = t => {
@@ -38,18 +38,18 @@ test('a conversation database yields one dated record per answered request and i
   db.exec('PRAGMA journal_mode=WAL; CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, status INTEGER, metadata BLOB); CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB);');
   db.prepare('INSERT INTO steps VALUES (?,?,?,?)').run(7, 15, 3, stamp(1, 1760003600));
   const insert = db.prepare('INSERT INTO gen_metadata VALUES (?,?)');
-  insert.run(0, generation({ startedAt: 1760000000, usage: [integer(2, 100), integer(3, 40), integer(4, 50), integer(5, 900), integer(6, 3), text(7, 'message-1'), text(11, 'response-1')] }));
-  // No request start (or an implausible small integer in field 9.4): dated by its first available step.
-  insert.run(1, generation({ startedAt: 42, usage: [integer(2, 10), integer(3, 5), text(7, 'message-2')], steps: [message(2, Buffer.concat([vi(6), vi(7), vi(8)]))] }));
+  insert.run(0, generation({ startedAt: 1760000000, names: [text(19, 'gemini-3.8-flash-high'), text(21, 'Gemini 3.8 Flash (High)')], usage: [integer(2, 100), integer(3, 40), integer(4, 50), integer(5, 900), integer(6, 3), text(7, 'message-1'), text(11, 'response-1')] }));
+  // No request start (or an implausible small integer in field 9.4) and no display name: dated by step, falls back to response_model.
+  insert.run(1, generation({ startedAt: 42, names: [text(19, 'claude-opus-5-5-medium')], usage: [integer(2, 10), integer(3, 5), text(7, 'message-2')], steps: [message(2, Buffer.concat([vi(6), vi(7), vi(8)]))] }));
   // Its step is gone as well, so the request stays undated.
   insert.run(2, generation({ usage: [integer(5, 20)], steps: [integer(2, 9)] }));
   // A preflight row reports no consumption.
   insert.run(3, generation({ startedAt: 1760000000, usage: [integer(2, 0)] }));
   db.close();
   assert.deepEqual(readConversationUsage(path), [
-    { at: 1760000000000, id: 'r3:response-1', uncached: 100, cacheRead: 900, cacheWrite: 50, output: 40 },
-    { at: 1760003600000, id: 'm0:message-2', uncached: 10, cacheRead: 0, cacheWrite: 0, output: 5 },
-    { at: null, id: '', uncached: 0, cacheRead: 20, cacheWrite: 0, output: 0 },
+    { at: 1760000000000, id: 'r3:response-1', model: 'Gemini 3.8 Flash (High)', uncached: 100, cacheRead: 900, cacheWrite: 50, output: 40 },
+    { at: 1760003600000, id: 'm0:message-2', model: 'claude-opus-5-5-medium', uncached: 10, cacheRead: 0, cacheWrite: 0, output: 5 },
+    { at: null, id: '', model: '', uncached: 0, cacheRead: 20, cacheWrite: 0, output: 0 },
   ]);
   assert.deepEqual(readdirSync(directory), ['conversation.db'], 'reading a closed conversation leaves no -wal or -shm file beside it');
 
@@ -71,34 +71,34 @@ test('a conversation database yields one dated record per answered request and i
   noSteps.prepare('INSERT INTO gen_metadata VALUES (?,?)').run(1, generation({ usage: [integer(2, 22)], steps: [message(2, Buffer.concat([vi(1), vi(2)]))] }));
   noSteps.close();
   assert.deepEqual(readConversationUsage(noStepsPath), [
-    { at: null, id: '', uncached: 11, cacheRead: 0, cacheWrite: 0, output: 0 },
-    { at: null, id: '', uncached: 22, cacheRead: 0, cacheWrite: 0, output: 0 },
+    { at: null, id: '', model: '', uncached: 11, cacheRead: 0, cacheWrite: 0, output: 0 },
+    { at: null, id: '', model: '', uncached: 22, cacheRead: 0, cacheWrite: 0, output: 0 },
   ]);
   const packedRow = generation({ usage: [integer(2, 10)], steps: [message(2, Buffer.concat([vi(1), vi(2)]))] });
   assert.throws(() => parseUsageRow(packedRow, () => { throw new Error('SQLITE_BUSY'); }), /SQLITE_BUSY/);
 });
 
-test('usage is added up per local day and response deduplication uses a deterministic tie-breaker', () => {
-  const request = (at, id, uncached, output = 0, source = '') => ({ at, id, uncached, cacheRead: 0, cacheWrite: 0, output, source });
+test('usage is added up per local day and model with deterministic response deduplication', () => {
+  const request = (at, id, model, uncached, output = 0, source = '') => ({ at, id, model, uncached, cacheRead: 0, cacheWrite: 0, output, source });
   const summary = summarizeUsage([
-    request(noon(10, 12), '', 30),
-    request(noon(10, 11), 'r1:a', 100, 20, 'b.db'),
-    request(noon(10, 11), '', 5),
-    request(noon(10, 11), 'r1:a', 100, 60, 'a.db'), // fullest record wins
-    request(null, '', 7),
+    request(noon(10, 12), '', 'Gemini', 30),
+    request(noon(10, 11), 'r1:a', 'Gemini', 100, 20, 'b.db'),
+    request(noon(10, 11), '', 'Claude', 5),
+    request(noon(10, 11), 'r1:a', 'Gemini', 100, 60, 'a.db'), // fullest record wins
+    request(null, '', 'Gemini', 7),
   ]);
   assert.deepEqual(summary, {
     days: [
-      { date: '2026-10-11', ...bucket(2, 105, 0, 0, 60) },
-      { date: '2026-10-12', ...bucket(1, 30, 0, 0, 0) },
+      { date: '2026-10-11', ...bucket(2, 105, 0, 0, 60), models: [{ name: 'Claude', ...bucket(1, 5, 0, 0, 0) }, { name: 'Gemini', ...bucket(1, 100, 0, 0, 60) }] },
+      { date: '2026-10-12', ...bucket(1, 30, 0, 0, 0), models: [{ name: 'Gemini', ...bucket(1, 30, 0, 0, 0) }] },
     ],
     undated: bucket(1, 7, 0, 0, 0),
   });
 
-  // Equal-token duplicates pick the dated/earlier record regardless of input order.
-  const earlier = request(noon(10, 10), 'r1:tie', 50, 10, 'z.db');
-  const later = request(noon(10, 11), 'r1:tie', 50, 10, 'a.db');
-  const undated = request(null, 'r1:tie', 50, 10, '0.db');
+  // Equal-token duplicates pick the dated/earlier/named record regardless of input order.
+  const earlier = request(noon(10, 10), 'r1:tie', 'Gemini', 50, 10, 'z.db');
+  const later = request(noon(10, 11), 'r1:tie', 'Claude', 50, 10, 'a.db');
+  const undated = request(null, 'r1:tie', '', 50, 10, '0.db');
   assert.deepEqual(summarizeUsage([later, undated, earlier]), summarizeUsage([earlier, later, undated]));
   assert.deepEqual(summarizeUsage([later, undated, earlier]).days.map(d => d.date), ['2026-10-10']);
 });
@@ -118,7 +118,7 @@ test('conversation databases are read once, skip immutable when active or recent
   writeFileSync(join(directory, 'notes.txt'), 'not a conversation');
   mkdirSync(join(directory, 'folder.db')); // directory named *.db must be ignored cleanly
 
-  const row = uncached => ({ at: noon(10, 11), id: '', uncached, cacheRead: 0, cacheWrite: 0, output: 0 });
+  const row = uncached => ({ at: noon(10, 11), id: '', model: 'Gemini', uncached, cacheRead: 0, cacheWrite: 0, output: 0 });
   const rows = { 'idle.db': [row(1)], 'recent.db': [row(2)], 'active.db': [row(4)] };
   const trace = [];
   const modes = new Map();
@@ -252,6 +252,7 @@ test('the history is served only by the authenticated POST route and is not scan
   class SidecarApp { api(path, handler, method = 'POST') { routes.add(method + ' ' + path); } page() {} run() {} }
   await startPanel(() => ({ SidecarApp }), { ANTIGRAVITY_SIDECAR_UI_TOKEN: 'fixture' });
   assert.equal(DEFAULT_SETTINGS.showUsageActivity, false);
+  assert.equal(DEFAULT_SETTINGS.showModelUsage, false);
   assert.ok(routes.has('POST /api/usage'));
   assert.ok(!routes.has('GET /api/usage'));
   assert.deepEqual(await inspectUsage({ ...DEFAULT_SETTINGS }), { enabled: false });
@@ -261,10 +262,16 @@ const ui = createPresentation();
 const usageUi = createUsagePresentation(ui.formatTokens, ui.escapeHtml);
 const history = {
   days: [
-    { date: '2026-10-20', ...bucket(1, 2000, 0, 0, 1000) },
-    { date: '2026-11-05', ...bucket(1, 1000, 5000, 0, 0) },
-    { date: '2026-11-16', ...bucket(1, 100, 200, 300, 400) }, // Monday of this week
-    { date: '2026-11-19', ...bucket(2, 500, 600, 200, 200) }, // Thursday (today)
+    { date: '2026-10-20', ...bucket(1, 2000, 0, 0, 1000), models: [{ name: 'Gemini 4 Argon (High)', ...bucket(1, 2000, 0, 0, 1000) }] },
+    { date: '2026-11-05', ...bucket(1, 1000, 5000, 0, 0), models: [{ name: 'Claude Opus 5.5 (Medium)', ...bucket(1, 1000, 5000, 0, 0) }] },
+    { date: '2026-11-16', ...bucket(1, 100, 200, 300, 400), models: [{ name: 'Gemini 4 Argon (Medium)', ...bucket(1, 100, 200, 300, 400) }] }, // Monday of this week
+    {
+      date: '2026-11-19', ...bucket(2, 500, 600, 200, 200),
+      models: [
+        { name: 'Gemini 4 Argon (High)', ...bucket(1, 400, 600, 0, 0) },
+        { name: 'claude-opus-5-5-high', ...bucket(1, 100, 0, 200, 200) },
+      ],
+    }, // Thursday (today)
   ],
   undated: bucket(1, 50, 0, 0, 0),
   unread: 0,
@@ -319,6 +326,108 @@ test('the activity block renders four-part tooltips, All-time scope note, and lo
   assert.match(html, /2026-11-19 · 1,500 tokens · 2 次请求\n非缓存输入 500 · 缓存读取 600 · 缓存写入 200 · 输出 200/);
   assert.match(html, /始于 2026-10-20 · 6 次请求/);
   assert.match(html, /1 个对话文件未能读取/);
+});
+
+test('usage by model aggregates effort tiers into model families, merges response_model fallbacks, and keeps colours across pages', () => {
+  const recent = usageUi.modelView(history, { today: '2026-11-19', period: 'day', shift: 0 });
+  assert.equal(recent.bars.length, 14);
+  assert.equal(recent.range, '2026-11-06 – 11-19');
+  assert.deepEqual([recent.older, recent.newer, recent.tokens, recent.requests], [true, false, 2500, 3]);
+  // Claude Opus 5.5 (6500 all-time: 6000 Medium + 500 claude-opus-5-5-high) outranks Gemini 4 Argon (5000).
+  assert.deepEqual(recent.models.map(m => [m.name, m.tokens]), [['Gemini 4 Argon', 2000], ['Claude Opus 5.5', 500]]);
+  assert.deepEqual(recent.models[0].tiers.map(t => [t.tier, t.tokens]), [['High', 1000], ['Medium', 1000]]);
+  assert.deepEqual(recent.models[1].tiers.map(t => [t.tier, t.tokens]), [['High', 500]]);
+  const claudeColor = recent.models[1].color;
+  const argonColor = recent.models[0].color;
+
+  const previous = usageUi.modelView(history, { today: '2026-11-19', period: 'day', shift: -1 });
+  assert.equal(previous.range, '2026-10-23 – 11-05');
+  assert.deepEqual([previous.older, previous.newer], [true, true]);
+  assert.equal(previous.models[0].color, claudeColor, 'Claude keeps its all-time colour on earlier pages');
+  assert.equal(usageUi.modelView(history, { today: '2026-11-19', period: 'day', shift: -2 }).models[0].color, argonColor);
+
+  const months = usageUi.modelView(history, { today: '2026-11-19', period: 'month', shift: 0 });
+  assert.equal(months.range, '2025-12 – 2026-11');
+  assert.deepEqual([months.older, months.newer, months.tokens], [false, false, 11500]);
+
+  // Multiple Gemini thinking tiers do not crowd Claude out of the 6-colour palette, and
+  // standalone response_model fallbacks (gemini-3.8-flash) are preserved and grouped cleanly.
+  const realistic = {
+    days: [{
+      date: '2026-11-19',
+      ...bucket(10, 0, 0, 0, 0),
+      models: [
+        { name: 'Gemini 4 Hydrogen (High)', ...bucket(2, 4000, 0, 0, 0) },
+        { name: 'Gemini 4 Hydrogen (XHigh)', ...bucket(1, 2000, 0, 0, 0) },
+        { name: 'Gemini 4 Argon (High)', ...bucket(2, 3000, 0, 0, 0) },
+        { name: 'Gemini 4 Argon (Medium)', ...bucket(1, 1500, 0, 0, 0) },
+        { name: 'Gemini 4 Neon (Low)', ...bucket(1, 1200, 0, 0, 0) },
+        { name: 'Gemini 4 Neon (High)', ...bucket(1, 1100, 0, 0, 0) },
+        { name: 'gemini-3.8-flash', ...bucket(1, 900, 0, 0, 0) },
+        { name: 'gemini-3.8-flash-high', ...bucket(1, 300, 0, 0, 0) },
+        { name: 'Claude Opus 5.5 (Medium)', ...bucket(1, 1000, 0, 0, 0) },
+      ],
+    }],
+  };
+  const merged = usageUi.modelView(realistic, { today: '2026-11-19', period: 'day' });
+  assert.deepEqual(
+    merged.models.map(m => [m.name, m.tokens]),
+    [
+      ['Gemini 4 Hydrogen', 6000],
+      ['Gemini 4 Argon', 4500],
+      ['Gemini 4 Neon', 2300],
+      ['gemini-3.8-flash', 1200],
+      ['Claude Opus 5.5', 1000],
+    ],
+  );
+  assert.ok(merged.models.every(m => m.name !== null), 'all 5 families fit in the palette without overflowing into Other models');
+
+  // Past 6 distinct model families, the smallest share the "Other models" slot with collapsed-family breakdown.
+  const many = {
+    days: [{
+      date: '2026-11-19', ...bucket(8, 360, 0, 0, 0),
+      models: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'].map((name, i) => ({ name, ...bucket(1, (8 - i) * 10, 0, 0, 0) })),
+    }],
+  };
+  const grouped = usageUi.modelView(many, { today: '2026-11-19', period: 'day' });
+  const other = grouped.models.find(m => m.name === null);
+  assert.equal(grouped.models.length, 7);
+  assert.equal(other.tokens, 30);
+  assert.deepEqual(other.families.map(f => [f.name, f.tokens]), [['m7', 20], ['m8', 10]]);
+
+  // Edge cases: whitespace after models/, -thinking-<tier> and (Thinking, <tier>) orderings,
+  // unknown period fallback, and future dates (> today) excluded consistently across periods.
+  assert.deepEqual(usageUi.splitModelName('models/  gemini-3-pro-high'), { key: 'gemini-3-pro', family: 'gemini-3-pro', tier: 'High', isDisplay: false });
+  assert.deepEqual(usageUi.splitModelName('claude-opus-4-6-thinking-high'), { key: 'claude-opus-4-6', family: 'claude-opus-4-6', tier: 'High', isDisplay: false });
+  assert.deepEqual(usageUi.splitModelName('Claude Opus 4.6 (Thinking, High)'), { key: 'claude-opus-4-6', family: 'Claude Opus 4.6', tier: 'High', isDisplay: true });
+  assert.equal(usageUi.modelView(history, { today: '2026-11-19', period: 'unknown' }).range, '2026-11-06 – 11-19');
+  const withFuture = {
+    days: [
+      { date: '2026-11-19', ...bucket(1, 100, 0, 0, 0), models: [{ name: 'Gemini 4 Argon (High)', ...bucket(1, 100, 0, 0, 0) }] },
+      { date: '2026-11-21', ...bucket(1, 500, 0, 0, 0), models: [{ name: 'Gemini 4 Argon (High)', ...bucket(1, 500, 0, 0, 0) }] },
+    ],
+  };
+  assert.equal(usageUi.modelView(withFuture, { today: '2026-11-19', period: 'week' }).tokens, 100);
+  assert.equal(usageUi.modelView(withFuture, { today: '2026-11-19', period: 'month' }).tokens, 100);
+});
+
+test('the model block renders effort-tier tooltips, stacked bars, paging controls, and standalone unread notices', () => {
+  assert.match(usageUi.modelsHtml(null, { language: 'zh-CN' }), /正在读取本机对话/);
+  assert.match(
+    usageUi.modelsHtml({ days: [], unread: 2 }, { language: 'en' }),
+    /No usage recorded yet.*2 conversation file\(s\)/,
+    'standalone empty Usage by model still reports unread files',
+  );
+  const html = usageUi.modelsHtml({ ...history, unread: 3 }, { today: '2026-11-19', period: 'day', language: 'zh-CN' });
+  assert.match(html, /class="usage-range" title="2026-11-06 – 11-19">2026-11-06 – 11-19<\/span>/);
+  assert.match(html, /data-usage-shift="-1" aria-label="更早">‹/);
+  assert.match(html, /data-usage-shift="1" aria-label="更晚" disabled>›/);
+  assert.match(html, /class="usage-model-name">Gemini 4 Argon<\/span><span class="usage-model-share">80%<\/span><span class="usage-model-tokens">2\.0K<\/span>/);
+  assert.match(html, /class="usage-model-name">Claude Opus 5\.5<\/span><span class="usage-model-share">20%<\/span><span class="usage-model-tokens">500<\/span>/);
+  assert.match(html, /非缓存输入 500 · 缓存读取 800 · 缓存写入 300 · 输出 400 · 2 次请求\nHigh: 1,000 \(50%\) · 1 次请求\nMedium: 1,000 \(50%\) · 1 次请求/);
+  assert.match(html, /3 个对话文件未能读取/, 'standalone populated Usage by model also renders the unread notice');
+  assert.doesNotMatch(usageUi.modelsHtml({ ...history, unread: 3 }, { today: '2026-11-19', period: 'day', language: 'zh-CN', showUnread: false }), /未能读取/);
+  assert.match(usageUi.modelsHtml({ days: [{ date: '2026-11-19', ...bucket(1, 10, 0, 0, 0), models: [{ name: '', ...bucket(1, 10, 0, 0, 0) }] }] }, { today: '2026-11-19', language: 'zh-CN' }), /未知模型/);
 });
 
 // Minimal stand-in DOM for driving the sidebar page script in node:vm.
@@ -412,16 +521,17 @@ const openSidebar = async (data, usage, { onFetch } = {}) => {
   const settle = () => new Promise(resolve => setImmediate(resolve));
   await settle();
   const activity = dom.document.getElementById('usage-activity');
+  const models = dom.document.getElementById('usage-models');
   const poll = async (seconds = 1) => {
-    const before = activity.writes;
+    const before = activity.writes + models.writes;
     dom.now += seconds * 1000;
     await dom.tick();
     await settle();
-    return activity.writes - before;
+    return (activity.writes + models.writes) - before;
   };
   const usageCalls = () => requests.filter(req => req.method === 'POST' && req.url === '/api/usage');
   const click = dataset => listener({ target: { closest: () => ({ dataset, disabled: false }) } });
-  return { context, poll, settle, usageCalls, focused, root, click, activity };
+  return { context, poll, settle, usageCalls, focused, root, click, activity, models };
 };
 
 test('the sidebar leaves the history alone while it is off and reads it about once a minute while it is shown', async () => {
@@ -479,7 +589,7 @@ test('optimistic settings saves do not race /api/usage into a 10-second loading 
       if (url === '/api/settings') {
         await saveGate;
         Object.assign(data.prefs, body);
-        backendEnabled = data.prefs.showUsageActivity === true;
+        backendEnabled = data.prefs.showUsageActivity === true || data.prefs.showModelUsage === true;
         return data.prefs;
       }
       if (url === '/api/usage') {
@@ -511,15 +621,45 @@ test('optimistic settings saves do not race /api/usage into a 10-second loading 
   assert.match(activity.innerHTML, /<div class="usage-heat" data-scale="day"/);
 });
 
-test('usage history sits in a dedicated section at the bottom of Settings with a ? scope tooltip', () => {
+test('the model block shares the one history request and changes period and page without another', async () => {
+  const data = snapshot({ showModelUsage: true });
+  const { poll, usageCalls, click, activity, models } = await openSidebar(data, { enabled: true, ...history, unread: 1 });
+  await poll();
+  await poll();
+  assert.equal(usageCalls().length, 1);
+  assert.equal(activity.hidden, true, 'the activity block stays off');
+  assert.match(models.innerHTML, /<span class="usage-range" title="2026-11-06 – 11-19">2026-11-06 – 11-19<\/span>/);
+  assert.match(models.innerHTML, /1 conversation file\(s\) could not be read/);
+
+  click({ usageShift: '-1' });
+  assert.match(models.innerHTML, /<span class="usage-range" title="2026-10-23 – 11-05">2026-10-23 – 11-05<\/span>/);
+  click({ usagePeriod: 'month' });
+  assert.match(models.innerHTML, /<span class="usage-range" title="2025-12 – 2026-11">2025-12 – 2026-11<\/span>/, 'a new period starts at the current page');
+  click({ usageShift: '1' });
+  assert.match(models.innerHTML, /<span class="usage-range" title="2025-12 – 2026-11">2025-12 – 2026-11<\/span>/, 'there is no page after today');
+  assert.equal(usageCalls().length, 1);
+
+  // Turning Token activity on shows the unread notice once (in activity) rather than duplicating it;
+  // turning Token activity back off restores the unread notice inside Usage by model.
+  data.prefs.showUsageActivity = true;
+  await poll();
+  assert.match(activity.innerHTML, /1 conversation file\(s\) could not be read/);
+  assert.doesNotMatch(models.innerHTML, /1 conversation file\(s\) could not be read/);
+  data.prefs.showUsageActivity = false;
+  await poll();
+  assert.match(models.innerHTML, /1 conversation file\(s\) could not be read/);
+});
+
+test('both history blocks sit in the dedicated bottom Settings section with one ? scope tooltip', () => {
   const settingsHtml = UI_HTML.slice(UI_HTML.indexOf('<section class="settings'));
   const queue = settingsHtml.indexOf('data-setting-card="showQueueWarnings"');
   const scope = settingsHtml.indexOf('data-settings-scope="usage"');
   const help = settingsHtml.indexOf('id="help-usage-scope"');
   const activity = settingsHtml.indexOf('data-setting-card="showUsageActivity" data-checked="false"');
-  assert.ok(queue > 0 && queue < scope && scope < help && help < activity);
+  const models = settingsHtml.indexOf('data-setting-card="showModelUsage" data-checked="false"');
+  assert.ok(queue > 0 && queue < scope && scope < help && help < activity && activity < models);
   assert.match(settingsHtml, /data-settings-scope="usage"[\s\S]*?<div class="setting-head" tabindex="0" aria-describedby="help-usage-scope">/);
   assert.match(UI_HTML, /\.usage-total > b \{ overflow: hidden; text-overflow: ellipsis;/);
-  assert.match(UI_HTML, /<section class="stats-usage" id="usage-root" hidden>\s*<div class="usage-block" id="usage-activity"><\/div>/);
-  assert.match(UI_HTML, /\.stats-usage\[hidden\] \{ display: none; \}/);
+  assert.match(UI_HTML, /<section class="stats-usage" id="usage-root" hidden>\s*<div class="usage-block" id="usage-activity" hidden><\/div>\s*<div class="usage-block" id="usage-models" hidden><\/div>/);
+  assert.match(UI_HTML, /\.stats-usage\[hidden\], \.usage-block\[hidden\] \{ display: none; \}/);
 });

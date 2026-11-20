@@ -841,7 +841,11 @@ await test('Opt-in effort bar animates and switches models in place; default pic
     <main data-testid="conversation-view"><div class="agy-composer-footer" style="position:fixed;bottom:16px;width:90vw;display:flex"><div style="flex:1;display:flex"><button data-testid="model-selector-trigger">Native menu</button></div><div>Send</div></div></main>` }));
   await page.goto('http://effort.test/');
   await page.getByTestId('model-selector-trigger').evaluate(button => {
-    const modelOptions = ['Gemini 4 Argon (Low)', 'Gemini 4 Argon (Medium)', 'Gemini 4 Argon (High)', 'Claude Sonnet (Low)', 'Claude Sonnet (High)', 'Fixed (High)', 'Custom'].map((label, value) => ({ label, value }));
+    const modelOptions = [
+      'Gemini 4 Argon (Low)', 'Gemini 4 Argon (Medium)', 'Gemini 4 Argon (High)',
+      'Gemini 4 Neon (Low)', 'Gemini 4 Neon (XHigh)', 'Orchestrator (Argon)', 'Orchestrator (Neon)',
+      'Claude Sonnet (Low)', 'Claude Sonnet (High)', 'Fixed (High)', 'Custom',
+    ].map((label, value) => ({ label, value }));
     window.effortCalls = [];
     button.__reactFiber$fixture = { memoizedProps: { value: {
       modelOptions, selectedModel: modelOptions[0], setSelectedModel(option) {
@@ -924,10 +928,32 @@ await test('Opt-in effort bar animates and switches models in place; default pic
   await page.locator('button.dk-model-row[data-family="Fixed (High)"]').click();
   assert.equal(await range.getAttribute('aria-disabled'), 'true');
   assert.equal(await range.getAttribute('aria-valuetext'), 'High');
-  await page.locator('button.dk-model-row[data-family="Custom"]').click();
-  assert.equal(await range.getAttribute('aria-valuetext'), 'Fixed');
+  assert.equal(await range.getAttribute('data-energy'), '0', 'a fixed option with an explicit tier keeps its existing style');
   await gemini.click();
   assert.equal(await range.getAttribute('aria-valuetext'), 'High', 'each model keeps its last tier');
+
+  await page.locator('button.dk-model-row[data-family="Gemini 4 Neon"]').click();
+  await range.press('End');
+  await page.waitForFunction(() => {
+    const slider = document.getElementById('agy-capsule-host').shadowRoot.querySelector('.ces-root');
+    return slider.getAttribute('aria-valuetext') === 'XHigh' && slider.style.getPropertyValue('--ces-energy') === '1';
+  });
+  const effect = () => range.evaluate(slider => {
+    const track = slider.querySelector('.ces-track');
+    const stars = track.querySelector('.ces-stars');
+    return [slider.dataset.theme, slider.style.getPropertyValue('--ces-energy'), track.style.getPropertyValue('--ces-fill-bg'),
+      getComputedStyle(track).opacity, getComputedStyle(track).filter, stars.dataset.count,
+      stars.firstElementChild.style.animationDuration, getComputedStyle(track.querySelector('.ces-energy__sweep')).animationPlayState];
+  });
+  const xhigh = await effect();
+  for (const model of ['Orchestrator (Argon)', 'Orchestrator (Neon)', 'Custom']) {
+    await page.getByRole('menuitem', { name: model, exact: true }).click();
+    assert.deepEqual(await effect(), xhigh, 'a model without a known effort tier uses the same running effects as Gemini XHigh');
+    assert.equal(await range.getAttribute('aria-disabled'), 'true');
+    assert.equal(await range.getAttribute('aria-valuemax'), '0');
+    assert.equal(await range.getAttribute('aria-valuetext'), null);
+    assert.equal(await bar.locator('.ces-ag-effort-value').textContent(), '');
+  }
 
   await toggle.uncheck();
   await sidebar.locator('.pv-effort-bar').waitFor({ state: 'hidden' });

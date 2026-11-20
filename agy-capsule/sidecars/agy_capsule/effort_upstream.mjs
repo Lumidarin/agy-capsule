@@ -934,7 +934,7 @@ export function createUpstreamEffort() {
   }
 
   function extractEffortDisplayLabel(item, effortKey, seat) {
-    if (item && typeof item === "object" && typeof item.label === "string" && item.label) {
+    if (item && typeof item === "object" && typeof item.label === "string") {
       return item.label;
     }
     if (seat && typeof seat.formatEffortLabel === "function") {
@@ -1096,6 +1096,8 @@ export function createUpstreamEffort() {
         }
       }
       var locked = Boolean((seat && seat.locked) || count <= 1);
+      // Models without an explicit tier use full effects without exposing a synthetic tier to the host.
+      var visualMax = count === 1 && levels[0].label === "";
       var stops = energyStopsFor(levels);
       var baseName = (seat && seat.baseName) || (seat && seat.modelName) || "";
       var theme = activeSettings.theme === "auto" ? (isClaudeModel(baseName) ? "claude" : "codex") : activeSettings.theme;
@@ -1108,6 +1110,7 @@ export function createUpstreamEffort() {
         count: count,
         officialIndex: officialIndex,
         locked: locked,
+        visualMax: visualMax,
         energyStart: stops.start,
         energyEnd: stops.end,
         hasOffFirst: stops.hasOffFirst
@@ -1138,7 +1141,7 @@ export function createUpstreamEffort() {
       var safeIdx = Math.max(0, Math.min(Math.max(0, count - 1), showIdx));
       var levelItem = snap.levels[safeIdx];
       var label = levelItem ? levelItem.label : "";
-      var isMax = !snap.locked && count > 1 && safeIdx === count - 1 && !isOffLevel(label);
+      var isMax = snap.visualMax || (!snap.locked && count > 1 && safeIdx === count - 1 && !isOffLevel(label));
 
       var rowEl =
         opts.row ||
@@ -1162,10 +1165,10 @@ export function createUpstreamEffort() {
 
       var valEl = opts.valueElement;
       if (valEl) {
-        if (label && valEl.textContent !== label) {
+        if (valEl.textContent !== label) {
           valEl.textContent = label;
           // 无论是 Claude 还是 Codex (Argon / Flash)，文字切换时统一触发顺滑向上翻转动效
-          if (!prefersReducedMotion(win)) {
+          if (label && !prefersReducedMotion(win)) {
             if (valEl.__cesRiseTimer) {
               clearTimeout(valEl.__cesRiseTimer);
               valEl.__cesRiseTimer = null;
@@ -1258,7 +1261,7 @@ export function createUpstreamEffort() {
       if (destroyed) return;
       var snap = readSeatSnapshot();
       // 强度归零（回到 Low / 切走 Claude / 锁定）即停止循环，零冗余开销
-      if (!snap.isClaude || snap.locked || claudeIntensity <= 0) {
+      if (!snap.isClaude || claudeIntensity <= 0) {
         stopClaudeCanvasAnimation();
         return;
       }
@@ -1274,7 +1277,7 @@ export function createUpstreamEffort() {
       var trackW = rect && rect.width > 0 ? rect.width : 280;
       var th = rect && rect.height > 0 ? Math.round(rect.height) : (claudeCanvasEl.height || 28);
       // 画布像素宽度 = 已填充宽度（圆钮中心），与 CSS width: var(--ces-fill) 对齐
-      var curPct = motionState ? clamp01(motionState.x) : 0;
+      var curPct = snap.visualMax ? 1 : motionState ? clamp01(motionState.x) : 0;
       var tw = Math.max(1, Math.round(KNOB_RADIUS + (trackW - KNOB_RADIUS * 2) * curPct));
       if (claudeCanvasEl.width !== tw) claudeCanvasEl.width = tw;
       if (claudeCanvasEl.height !== th) claudeCanvasEl.height = th;
@@ -1297,7 +1300,7 @@ export function createUpstreamEffort() {
     }
 
     function applyVisualPct(snap, effectivePct, showIdx) {
-      var p = clamp01(effectivePct);
+      var p = snap.visualMax ? 1 : clamp01(effectivePct);
       var count = snap.count;
       var safeIdx = Math.max(0, Math.min(Math.max(0, count - 1), showIdx));
       var levelItem = snap.levels[safeIdx];
@@ -1318,15 +1321,18 @@ export function createUpstreamEffort() {
       if (rootEl.getAttribute("aria-valuemax") !== nextValMax) rootEl.setAttribute("aria-valuemax", nextValMax);
       var nextValNow = String(safeIdx);
       if (rootEl.getAttribute("aria-valuenow") !== nextValNow) rootEl.setAttribute("aria-valuenow", nextValNow);
-      if (rootEl.getAttribute("aria-valuetext") !== label) rootEl.setAttribute("aria-valuetext", label);
+      if (label) {
+        if (rootEl.getAttribute("aria-valuetext") !== label) rootEl.setAttribute("aria-valuetext", label);
+      } else if (rootEl.hasAttribute("aria-valuetext")) rootEl.removeAttribute("aria-valuetext");
       var nextDisabled = snap.locked ? "true" : "false";
       if (rootEl.getAttribute("aria-disabled") !== nextDisabled) rootEl.setAttribute("aria-disabled", nextDisabled);
 
-      if (snap.locked) {
+      if (snap.locked && !snap.visualMax) {
         if (!trackEl.classList.contains("is-locked")) trackEl.classList.add("is-locked");
       } else if (trackEl.classList.contains("is-locked")) {
         trackEl.classList.remove("is-locked");
       }
+      trackEl.style.cursor = snap.visualMax ? "not-allowed" : "";
 
       var offsetCss = knobOffsetOf(p, KNOB_RADIUS);
       var fillBg = fillBackgroundFor(p, snap.energyStart, snap.energyEnd, snap.isClaude);
@@ -1339,7 +1345,8 @@ export function createUpstreamEffort() {
       knobEl.style.left = offsetCss;
 
       // Claude 点阵：按圆钮实际位置连续计算强度/速度（Medium ≈0.35 强度、半速；High 全量、全速）
-      claudeIntensity = snap.isClaude && !snap.locked && count > 1 ? claudeIntensityFor(p, snap.energyStart) : 0;
+      var animateTrack = !snap.locked || snap.visualMax;
+      claudeIntensity = snap.isClaude && animateTrack ? claudeIntensityFor(p, snap.energyStart) : 0;
       claudeSpeed = claudeSpeedFor(p, snap.energyStart);
       if (claudeIntensity > 0) {
         if (claudeCanvasEl.style.display !== "block") {
@@ -1356,7 +1363,7 @@ export function createUpstreamEffort() {
         stopClaudeCanvasAnimation();
       }
 
-      var energy = snap.locked ? 0 : energyForPct(p, snap.energyStart);
+      var energy = animateTrack ? energyForPct(p, snap.energyStart) : 0;
       var slowdown = motionMode(win, activeSettings) === "quick" ? REDUCED_MOTION_SLOWDOWN : 1;
       if (Math.abs(energy - lastAppliedEnergy) > 1e-5 || slowdown !== lastAppliedSlowdown) {
         lastAppliedEnergy = energy;

@@ -143,7 +143,7 @@ export function mountEffortBar(choose) {
     refresh(group, selected, pending, label, localizedSettings) {
       settingsLabels = localizedSettings;
       caption.textContent = label;
-      const levels = group.items.map(item => ({ effort: item.label, label: item.tier || localizedSettings?.fixed || 'Fixed' }));
+      const levels = group.items.map(item => ({ effort: item.label, label: item.tier ?? '' }));
       const nextKey = JSON.stringify([group.name, levels]);
       if (nextKey !== groupKey) {
         closeSettings();

@@ -158,7 +158,7 @@ export function syncModelPicker(root, footer, prefsOrEnabled, labels, findFooter
   const hideTags = typeof prefsOrEnabled === 'object' ? prefsOrEnabled?.hideModelTags === true : false;
   const hideDefaultEffort = typeof prefsOrEnabled === 'object' ? prefsOrEnabled?.hideDefaultEffort === true : false;
   const effortCaption = prefsOrEnabled?.showEffortBar === true ? (labels?.effortLevel || 'Effort level') : '';
-  const effortOptions = effortCaption ? { ...settingsLabels?.effortBarOptions, fixed: labels?.effortFixed || 'Fixed' } : null;
+  const effortOptions = effortCaption ? settingsLabels?.effortBarOptions : null;
   const customizeList = typeof prefsOrEnabled === 'object' ? prefsOrEnabled?.customizeModelList === true : false;
   const hiddenList = customizeList && Array.isArray(prefsOrEnabled?.hiddenModels) ? prefsOrEnabled.hiddenModels : [];
   const previous = root._modelPicker;
@@ -412,7 +412,7 @@ export function syncModelPicker(root, footer, prefsOrEnabled, labels, findFooter
         queuedEffort = null;
         if (queued && queued !== next.selected) queueMicrotask(() => void commitSelection(queued, true));
       }
-      const key = JSON.stringify([next.items || next.labels, next.selected, pending, currentHidden, currentHideTags, currentHideDefaultEffort, currentEffortCaption, currentEffortOptions?.title, currentEffortOptions?.fixed]);
+      const key = JSON.stringify([next.items || next.labels, next.selected, pending, currentHidden, currentHideTags, currentHideDefaultEffort, currentEffortCaption, currentEffortOptions?.title]);
       if (key === signature) return;
       signature = key;
       hideSub();

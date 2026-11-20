@@ -814,3 +814,128 @@ await test('2.33 model picker shows the inherited effort, can hide previews, and
   assert.equal(await picker.count(), 0);
   assert.equal(await trigger.getAttribute('data-deck-model-bubble'), null);
 });
+
+await test('Opt-in effort bar animates and switches models in place; default picker still uses submenus', async t => {
+  const browser = await chromium.launch(launch);
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 900, height: 600 }, colorScheme: 'dark' });
+  const sidebar = await browser.newPage({ viewport: { width: 360, height: 760 } });
+  const data = snapshot();
+  await sidebar.route('http://agy.test/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/context') return route.fulfill({ json: data });
+    if (path === '/api/settings') {
+      Object.assign(data.prefs, route.request().postDataJSON());
+      return route.fulfill({ json: data.prefs });
+    }
+    return route.fulfill(path === '/preload.js' ? { body: '' } : { contentType: 'text/html', body: UI_HTML });
+  });
+  await sidebar.goto('http://agy.test/?token=fixture');
+  await sidebar.locator('#sidebar-tab-settings').click();
+  const toggle = sidebar.getByRole('checkbox', { name: '思考强度滑条' });
+  assert.equal(await toggle.isDisabled(), true);
+  await sidebar.getByRole('checkbox', { name: '优化模型胶囊' }).check();
+
+  await page.route('http://effort.test/', route => route.fulfill({ contentType: 'text/html', body:
+    `<style>:root{color-scheme:dark;--foreground:#f1f1f1;--card:#1c1c20}body{background:#121214}</style>
+    <main data-testid="conversation-view"><div class="agy-composer-footer" style="position:fixed;bottom:16px;width:90vw;display:flex"><div style="flex:1;display:flex"><button data-testid="model-selector-trigger">Native menu</button></div><div>Send</div></div></main>` }));
+  await page.goto('http://effort.test/');
+  await page.getByTestId('model-selector-trigger').evaluate(button => {
+    const modelOptions = ['Gemini 4 Argon (Low)', 'Gemini 4 Argon (Medium)', 'Gemini 4 Argon (High)', 'Claude Sonnet (Low)', 'Claude Sonnet (High)', 'Fixed (High)', 'Custom'].map((label, value) => ({ label, value }));
+    window.effortCalls = [];
+    button.__reactFiber$fixture = { memoizedProps: { value: {
+      modelOptions, selectedModel: modelOptions[0], setSelectedModel(option) {
+        if (!modelOptions.includes(option)) throw new Error('Expected the host option object');
+        this.selectedModel = option;
+        window.effortCalls.push(option.label);
+      },
+    } }, return: { memoizedProps: { conversationId: 'fixture', placement: 'top-start' } } };
+  });
+  await page.evaluate(buildRuntimeBundle(owner).code);
+  await apply(page, data);
+  const picker = page.locator('[data-el="modelPicker"]');
+  const bar = page.locator('.agy-effort');
+  const range = page.getByRole('slider', { name: 'Effort level' });
+  const panel = page.locator('.dk-model-options');
+  const flyout = page.locator('.dk-model-sub');
+  const gemini = page.locator('button.dk-model-row[data-family="Gemini 4 Argon"]');
+  const claude = page.locator('button.dk-model-row[data-family="Claude Sonnet"]');
+  await picker.click();
+  assert.equal(await bar.count(), 0);
+
+  await toggle.check();
+  await sidebar.getByRole('link', { name: 'antigravity-Codex-Claude-effort-slider' }).waitFor();
+  assert.equal(data.prefs.showEffortBar, true);
+  assert.equal(await sidebar.locator('.pv-effort-bar').isVisible(), true);
+  await apply(page, data);
+  assert.equal(await range.getAttribute('aria-valuetext'), 'Low');
+  await claude.hover();
+  assert.equal(await flyout.isVisible(), false);
+  const box = await range.locator('.ces-track').boundingBox();
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + 14, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, y, { steps: 6 });
+  assert.deepEqual(await page.evaluate(() => window.effortCalls), ['Gemini 4 Argon (Medium)'], 'commits before mouseup');
+  await page.mouse.move(box.x + box.width - 14, y, { steps: 6 });
+  await page.mouse.up();
+  assert.deepEqual(await page.evaluate(() => window.effortCalls), ['Gemini 4 Argon (Medium)', 'Gemini 4 Argon (High)']);
+  assert.equal(await range.getAttribute('aria-valuetext'), 'High', 'the menu stays open');
+  await page.waitForFunction(() => {
+    const stars = document.getElementById('agy-capsule-host').shadowRoot.querySelector('.ces-stars');
+    return +stars.dataset.count === 22 && stars.getAnimations({ subtree: true }).some(a => a.playState === 'running');
+  });
+
+  await claude.click();
+  assert.equal(await panel.isVisible(), true, 'selecting a different model keeps the menu open');
+  assert.equal(await range.getAttribute('data-theme'), 'claude');
+  assert.equal(await range.getAttribute('aria-valuetext'), 'Low', 'a model without a remembered tier starts at its own default');
+  await range.press('End');
+  const canvas = range.locator('canvas');
+  const firstFrame = await canvas.evaluate(el => el.toDataURL());
+  await page.waitForFunction(frame => {
+    const canvas = document.getElementById('agy-capsule-host').shadowRoot.querySelector('.ces-claude-canvas');
+    return canvas.width < 280 && canvas.toDataURL() !== frame;
+  }, firstFrame);
+  await range.click({ button: 'right' });
+  const controls = page.getByRole('dialog', { name: '思考强度滑条', exact: true });
+  assert.equal(await controls.getByText('思考强度滑条', { exact: true }).count(), 0);
+  assert.equal(await controls.getByRole('button').count(), 9);
+  await controls.getByRole('button', { name: '完整动画' }).click();
+  await controls.getByRole('button', { name: '隐藏' }).click();
+  await controls.getByRole('button', { name: 'Codex' }).click();
+  assert.equal(await range.getAttribute('data-theme'), 'codex');
+  assert.equal(await range.locator('.ces-ticks').isVisible(), false);
+  await page.keyboard.press('Escape');
+  assert.equal(await controls.count(), 0);
+  assert.equal(await panel.isVisible(), true);
+  await range.press('Shift+F10');
+  assert.equal(await controls.getByRole('button', { name: '完整动画' }).getAttribute('aria-pressed'), 'true');
+  await controls.getByRole('button', { name: '全部同色' }).click();
+  assert.equal(await range.locator('.ces-tick.is-dim').count(), 2);
+  await controls.getByRole('button', { name: '跟随模型' }).click();
+  assert.equal(await range.getAttribute('data-theme'), 'claude');
+  await page.mouse.click(700, 100);
+  assert.equal(await controls.count(), 0);
+  await picker.click();
+
+  await range.press('Home');
+  assert.equal(await picker.textContent(), 'Claude Sonnet Low');
+  await page.locator('button.dk-model-row[data-family="Fixed (High)"]').click();
+  assert.equal(await range.getAttribute('aria-disabled'), 'true');
+  assert.equal(await range.getAttribute('aria-valuetext'), 'High');
+  await page.locator('button.dk-model-row[data-family="Custom"]').click();
+  assert.equal(await range.getAttribute('aria-valuetext'), 'Fixed');
+  await gemini.click();
+  assert.equal(await range.getAttribute('aria-valuetext'), 'High', 'each model keeps its last tier');
+
+  await toggle.uncheck();
+  await sidebar.locator('.pv-effort-bar').waitFor({ state: 'hidden' });
+  await apply(page, data);
+  assert.equal(await bar.count(), 0);
+  assert.equal(await page.getByRole('menuitem', { name: 'Fixed (High)', exact: true }).isVisible(), true);
+  await claude.hover();
+  assert.equal(await flyout.isVisible(), true);
+  await claude.click();
+  assert.equal(await panel.isVisible(), false, 'the default picker still closes after selecting a model');
+});

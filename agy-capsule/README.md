@@ -29,6 +29,7 @@ Provides **Statistics** and **Settings** tabs at the top (settings live exclusiv
   - **Reset countdown**: `compact` (default) or `localized`
 - **Features** (unified section):
   - **Enhanced model capsule**: `false` — with **Keep native button** (`true`), **Hide model tags** (`false`), **Hide default effort** (`false`), and **Customize models** (`false`, persists `hiddenModels` in `settings.json`)
+    - **Effort bar**: `false` — replaces hover submenus with an animated slider and keeps the menu open after selecting a model. Right-click the slider for animation, tick mark, and style options.
   - **Highlight active model**: `false` (dims non-active quota pools when enabled)
   - **Hide absent quota windows**: `true` (hides empty windows such as Argon's missing 5h window on AI Pro)
   - **Cache expiry alert**: `true` with configurable yellow/red thresholds (`cacheWarnMin`: `3m`, `1–998`; `cacheColdMin`: `4m`, `2–999`; synced with panel Cache row)
@@ -74,6 +75,7 @@ Run the scripts from the repository root:
 - Selected features and visual/engineering ideas (multi-language support, panel visuals, active-model highlighting, click-to-pin, generation speed/effects, cache & quota tooltips, overload alerts, error classification, absent window hiding, style isolation, SQLite snapshot caching, incremental CDP pushes, and install maintenance) were adapted and reimplemented from [z21100644's PR #1](https://github.com/Lumidarin/agy-capsule/pull/1). Separate display/settings languages, independent appearance controls, the third failure capsule, narrow-width fallback order, turn metrics, and sidebar interactions were designed independently; 7-category context estimates and attachment scanning were not adopted.
 - Quota popover overflow under browser/page translation extensions was reported with a proposed fix in [Krwaby123's PR #2](https://github.com/Lumidarin/agy-capsule/pull/2), resolved here via column alignment and no-translate attributes.
 - Reading host model options from the Antigravity model trigger's React fiber tree for one-step model/effort selection was inspired by [antigravity-Codex-Claude-effort-slider](https://github.com/LLYSH-HANNARI/antigravity-Codex-Claude-effort-slider), reimplemented here via the CDP injector with Antigravity 2.33 / new-chat support, hover effort submenus, effort inheritance, and model list customization.
+- The optional effort bar incorporates its slider visuals and animations with the author's permission. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 - The usage history's daily / weekly activity map and usage-by-model bars follow the idea of the usage window in [wycocoyu/agy-context-dashboard](https://github.com/wycocoyu/agy-context-dashboard) (MIT), reimplemented here on the local conversation databases instead of the local API and without a ledger of its own.
 
 ## License

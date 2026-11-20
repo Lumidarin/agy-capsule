@@ -56,6 +56,7 @@ https://github.com/user-attachments/assets/9f5bf1c6-1284-4e17-a380-defdee83f60c
 - **隐藏模型标签**：隐藏菜单中的 `New`、`Notice` 等标签徽章。
 - **隐藏默认强度**：在下拉模型列表中隐藏档位预览（底栏当前档位与右侧展开的子菜单照常显示，直接点击仍按规则继承强度）。
 - **定制模型列表**：展开当前可用的模型列表，点击即可按模型隐藏或恢复显示（不会隐藏到列表为空）。
+- **思考强度滑条（默认关闭）**：开启后，点模型不关面板，也不再弹出悬停子菜单。可在底部点击、拖动或用方向键切档；拖过档位就切换，无需松手。右键滑条可调整动画、刻度和 Codex / Claude 样式。关闭时继续使用原来的悬停子菜单。
 
 打开子 Agent 对话时，底部会显示该子 Agent 最近一次请求使用的模型（只读）、上下文和请求提醒。缺少对应记录时隐藏该胶囊；父对话的模型和数据不会被拿来补位。
 
@@ -176,6 +177,7 @@ node --test "test/*.test.mjs"
 1. **参考 @z21100644 ([PR #1](https://github.com/Lumidarin/agy-capsule/pull/1))**：感谢提供的多语言、部分面板视觉、点击固定面板、当前模型高亮、生成指标与速度动效、统一的 `K` / `M` token 数值格式、Cache 与配额悬浮说明、上下文过载提醒、请求错误分类，以及隐藏不存在的配额窗口等思路。工程上也参考了其样式隔离、SQLite 读取缓存、CDP 增量推送、安装维护和 Sidecar 自动重载，并按本项目结构重新实现。未引入七类上下文估算与附件扫描。本版另行设计了设置语言与显示语言分离、独立外观控制、请求失败胶囊、新底栏的折叠优先级、本轮统计及 Sidebar 交互。
 2. **参考 @Krwaby123 ([PR #2](https://github.com/Lumidarin/agy-capsule/pull/2))**：感谢报告网页翻译插件导致的配额面板溢出，并提出统一列对齐、让列宽适应长译文的修复思路。本版采用了不同的跨分组网格实现，并将百分比和倒计时标记为不翻译（可通过设置改为中文）。
 3. **参考 [antigravity-Codex-Claude-effort-slider](https://github.com/LLYSH-HANNARI/antigravity-Codex-Claude-effort-slider)**：感谢提供从 Antigravity 模型按钮的 React 组件树读取宿主模型选项并一次提交模型与档位的思路。本版通过 CDP 渲染器重新实现，适配 Antigravity 2.33 与新对话页面，并补充了悬停二级强度菜单、强度继承与自定义模型列表等交互。
+   可选的思考强度滑条经原作者许可移植了原版的星尘、点阵和滑块动效；模型切换仍用本项目的接口。见[第三方许可](agy-capsule/THIRD-PARTY-NOTICES.md)。
 4. **参考 [wycocoyu/agy-context-dashboard](https://github.com/wycocoyu/agy-context-dashboard)（MIT）**：用量统计的每日 / 每周活动图和按模型统计用量的思路来自该项目的用量窗口，并按本项目结构重新实现：直接读取本机对话数据库，不调用本地接口，也不另存账本。
 
 ## License

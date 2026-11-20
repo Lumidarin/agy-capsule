@@ -17,10 +17,11 @@ import { createCdpNoticeManager } from './cdp_notice.mjs';
 import { createCloudTelemetryStore } from './cloud_telemetry.mjs';
 import { createUsageHistory } from './usage_history.mjs';
 import { createUsagePresentation } from './usage_ui.mjs';
+import { EFFORT_BAR_CSS, EFFORT_TRACK_MARKUP } from './effort_bar.mjs';
 
 const settingsStore = createSettingsStore();
 const cloudTelemetryStore = createCloudTelemetryStore();
-const PANEL_VERSION = 130;
+const PANEL_VERSION = 133;
 const presentation = createPresentation();
 export function getNotifyText(shortcutState, prefs) {
   const t = presentation.dictionaries[prefs?.settingsLanguage] || presentation.dictionaries['zh-CN'];
@@ -1419,6 +1420,12 @@ const UI_HTML = `<!DOCTYPE html>
     .pv-usage-bars i { display: block; }
     [data-setting-card="showUsageActivity"][data-checked="false"] .pv-usage-heat,
     [data-setting-card="showModelUsage"][data-checked="false"] .pv-usage-bars { opacity: .4; }
+    ${EFFORT_BAR_CSS}
+    .pv-effort-bar { max-width: 226px; margin-top: 6px; }
+    .setting-effort-credit { font-size: 11.5px; color: var(--muted-foreground, #8e8e93); overflow-wrap: anywhere; }
+    .setting-effort-credit a { color: inherit; text-underline-offset: 2px; }
+    .setting-effort-credit a:hover, .setting-effort-credit a:focus-visible { color: var(--foreground, CanvasText); }
+    .setting-model-card:not([data-effort-bar="true"]) :is(.setting-effort-credit, .pv-effort-bar) { display: none; }
     @media(pointer:coarse) { .pv-swatch { min-height: 40px; } }
   </style>
 </head>
@@ -1585,6 +1592,12 @@ const UI_HTML = `<!DOCTYPE html>
             <span data-i18n="expandModelList"></span>
           </label>
         </div>
+        <div class="setting-pair-item" data-setting-card="showEffortBar" data-checked="false" data-parent-off="${!DEFAULT_SETTINGS.modelEffortPicker}">
+          <label class="setting-check">
+            <input name="showEffortBar" type="checkbox" disabled />
+            <span data-i18n="showEffortBar"></span>
+          </label>
+        </div>
       </div>
       <div class="setting-preview" aria-hidden="true">
         <div class="pv-mp">
@@ -1597,7 +1610,12 @@ const UI_HTML = `<!DOCTYPE html>
             <span class="pv-mp-row-chev"><svg viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true"><path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/></svg></span>
           </span>
         </div>
+        <div class="ces-ag-effort-row pv-effort-bar" data-ces-max="true">
+          <div class="ces-ag-effort-head"><span class="ces-ag-effort-title" data-i18n="effortLevel"></span><span class="ces-ag-effort-value" style="color:#8b5cf6">High</span></div>
+          ${EFFORT_TRACK_MARKUP}
+        </div>
       </div>
+      <div class="setting-effort-credit"><span data-i18n="effortBarCredit"></span> <a href="https://github.com/LLYSH-HANNARI/antigravity-Codex-Claude-effort-slider" target="_blank" rel="noopener noreferrer">antigravity-Codex-Claude-effort-slider</a></div>
       <div class="pv-model-list" id="setting-model-list" data-toggle-setting="hiddenModels" role="group"></div>
     </div>
     ${renderCheckCard({ id: 'setting-highlight-active-model', key: 'highlightActiveModel', checked: false })}
@@ -1906,9 +1924,10 @@ const UI_HTML = `<!DOCTYPE html>
         modelPickerCard.dataset.keepNative = String(prefs.keepNativeModelEntry !== false);
         modelPickerCard.dataset.hideModelTags = String(prefs.hideModelTags === true);
         modelPickerCard.dataset.hideDefaultEffort = String(prefs.hideDefaultEffort === true);
+        modelPickerCard.dataset.effortBar = String(prefs.modelEffortPicker === true && prefs.showEffortBar === true);
         modelPickerCard.dataset.customizeModels = String(prefs.modelEffortPicker === true && prefs.customizeModelList === true && expandModelList === true);
       }
-      for (const subKey of ['keepNativeModelEntry', 'hideModelTags', 'hideDefaultEffort', 'customizeModelList']) {
+      for (const subKey of ['keepNativeModelEntry', 'hideModelTags', 'hideDefaultEffort', 'customizeModelList', 'showEffortBar']) {
         const subCard = document.querySelector('[data-setting-card="' + subKey + '"]');
         if (subCard) subCard.dataset.parentOff = String(prefs.modelEffortPicker !== true);
       }
@@ -2435,7 +2454,7 @@ const UI_HTML = `<!DOCTYPE html>
         const detailPop = control.closest('.pv-detail-pop');
         const modelCard = control.closest('.setting-model-card');
         const parentDisabled = (control.name === 'speedAnimation' && prefs.showSpeed === false)
-          || (['keepNativeModelEntry', 'hideModelTags', 'hideDefaultEffort', 'customizeModelList'].includes(control.name) && prefs.modelEffortPicker !== true)
+          || (['keepNativeModelEntry', 'hideModelTags', 'hideDefaultEffort', 'customizeModelList', 'showEffortBar'].includes(control.name) && prefs.modelEffortPicker !== true)
           || (control.dataset.uiToggle === 'expandModelList' && (prefs.modelEffortPicker !== true || prefs.customizeModelList !== true))
           || (!!modelCard && !control.closest('.setting-pair-item') && (prefs.modelEffortPicker !== true || prefs.customizeModelList !== true || !expandModelList))
           || (!!optionCard && !control.closest('.setting-pair-item') && optionCard.dataset.checked === 'false')

@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { readPickerState, resolveInheritedLabel, syncModelPicker } from './model_picker.mjs';
+import { EFFORT_BAR_CSS, effortEffects, mountEffortBar } from './effort_bar.mjs';
+import { createUpstreamEffort } from './effort_upstream.mjs';
 import { readCloudTrajectory } from './cloud_telemetry.mjs';
 import { createPresentation, getPresentationScript } from './ui.mjs';
 
@@ -134,11 +136,11 @@ function pageMount(d, childAnchor = null) {
   }
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '123') {
+  if (root.getAttribute('data-deck-ver') !== '127') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '123');
+    root.setAttribute('data-deck-ver', '127');
     root._speedActivity = null;
     root._motionPrev = null;
     root.style.cssText = [
@@ -206,6 +208,9 @@ function pageMount(d, childAnchor = null) {
           overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
         }
         .dk-model-options::-webkit-scrollbar { display: none; }
+        .dk-model-options:has(> .agy-effort) { min-width: min(212px, calc(100vw - 12px)); }
+        .dk-model-options > .agy-effort { margin: 5px 0 1px; }
+        ${EFFORT_BAR_CSS}
         .dk-model-list { display: flex; flex-direction: column; gap: 1px; }
         .dk-model-row,
         .dk-model-sub-item {
@@ -229,6 +234,9 @@ function pageMount(d, childAnchor = null) {
         .dk-model-row[aria-pressed="true"],
         .dk-model-sub-item[aria-pressed="true"] {
           color: var(--foreground, CanvasText);
+        }
+        .dk-model-options[data-effort-mode="true"] .dk-model-row[aria-pressed="true"] {
+          background: var(--secondary, rgba(128, 128, 145, 0.14));
         }
         .dk-model-row:disabled,
         .dk-model-sub-item:disabled { opacity: 0.55; cursor: progress; }
@@ -984,7 +992,8 @@ function pageMount(d, childAnchor = null) {
     model.title = labels.childRequestModel + ': ' + modelName;
     root.querySelector('[data-el="grpCtx"]').hidden = !d.hasContext;
   } else {
-    syncModelPicker(root, footerLeft, d.prefs, labels, findFooterLeft);
+    syncModelPicker(root, footerLeft, d.prefs, labels, findFooterLeft,
+      presentation.dictionaries[d.prefs?.settingsLanguage] || labels);
   }
   presentation.renderContextTooltips(root, d.contextData, labels);
   const now = Date.now();
@@ -1693,10 +1702,11 @@ function installRuntime(owner, hash) {
 }
 
 export function buildRuntimeBundle(owner = INSTANCE_TS) {
-  const functions = [toView, findFooterLeft, conversationIdOf, findSubagentAnchors, resolveInheritedLabel, readPickerState, syncModelPicker, readCloudTrajectory, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
-  const source = getPresentationScript() + '\n' + functions;
+  const functions = [toView, findFooterLeft, conversationIdOf, findSubagentAnchors, resolveInheritedLabel, readPickerState, createUpstreamEffort, effortEffects, mountEffortBar, syncModelPicker, readCloudTrajectory, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
+  const effortBar = `const EFFORT_BAR_CSS=${JSON.stringify(EFFORT_BAR_CSS)};`;
+  const source = getPresentationScript() + '\n' + effortBar + '\n' + functions;
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
-  const code = `(()=>{const INSTANCE_TS=${Number(owner)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${getPresentationScript()}\nconst {escapeHtml,appearance,cacheView,contextBreakdown,quotaView,makeRingSvg}=globalThis.__agyCapsulePresentation;\n${functions}\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;
+  const code = `(()=>{const INSTANCE_TS=${Number(owner)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${source}\nconst {escapeHtml,appearance,cacheView,contextBreakdown,quotaView,makeRingSvg}=globalThis.__agyCapsulePresentation;\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;
   return { code, hash };
 }
 

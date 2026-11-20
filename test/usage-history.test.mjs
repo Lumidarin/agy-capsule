@@ -382,21 +382,34 @@ test('usage by model aggregates effort tiers into model families, merges respons
   );
   assert.ok(merged.models.every(m => m.name !== null), 'all 5 families fit in the palette without overflowing into Other models');
 
-  // Past 6 distinct model families, the smallest share the "Other models" slot with collapsed-family breakdown.
+  // Past 6 distinct model families, the smallest share the "Other models" slot with collapsed-family breakdown,
+  // and "Other models" always stays at the bottom of the list even when its combined tokens exceed a named family.
   const many = {
     days: [{
-      date: '2026-11-19', ...bucket(8, 360, 0, 0, 0),
-      models: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'].map((name, i) => ({ name, ...bucket(1, (8 - i) * 10, 0, 0, 0) })),
+      date: '2026-11-19', ...bucket(9, 430, 0, 0, 0),
+      models: [
+        { name: 'm1', ...bucket(1, 90, 0, 0, 0) },
+        { name: 'm2', ...bucket(1, 80, 0, 0, 0) },
+        { name: 'm3', ...bucket(1, 70, 0, 0, 0) },
+        { name: 'm4', ...bucket(1, 60, 0, 0, 0) },
+        { name: 'm5', ...bucket(1, 50, 0, 0, 0) },
+        { name: 'm6', ...bucket(1, 30, 0, 0, 0) },
+        { name: 'm7', ...bucket(1, 20, 0, 0, 0) },
+        { name: 'm8', ...bucket(1, 16, 0, 0, 0) },
+        { name: 'm9', ...bucket(1, 14, 0, 0, 0) },
+      ],
     }],
   };
   const grouped = usageUi.modelView(many, { today: '2026-11-19', period: 'day' });
-  const other = grouped.models.find(m => m.name === null);
+  const other = grouped.models.at(-1);
   assert.equal(grouped.models.length, 7);
-  assert.equal(other.tokens, 30);
-  assert.deepEqual(other.families.map(f => [f.name, f.tokens]), [['m7', 20], ['m8', 10]]);
+  assert.equal(other.name, null, 'Other models stays last even when its sum (50) beats m6 (30)');
+  assert.equal(other.tokens, 50);
+  assert.deepEqual(grouped.models.map(m => m.name), ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', null]);
+  assert.deepEqual(other.families.map(f => [f.name, f.tokens]), [['m7', 20], ['m8', 16], ['m9', 14]]);
 
   // Edge cases: whitespace after models/, -thinking-<tier> and (Thinking, <tier>) orderings,
-  // unknown period fallback, and future dates (> today) excluded consistently across periods.
+  // unknown period fallback, and future dates (> today) excluded before palette ranking and across periods.
   assert.deepEqual(usageUi.splitModelName('models/  gemini-3-pro-high'), { key: 'gemini-3-pro', family: 'gemini-3-pro', tier: 'High', isDisplay: false });
   assert.deepEqual(usageUi.splitModelName('claude-opus-4-6-thinking-high'), { key: 'claude-opus-4-6', family: 'claude-opus-4-6', tier: 'High', isDisplay: false });
   assert.deepEqual(usageUi.splitModelName('Claude Opus 4.6 (Thinking, High)'), { key: 'claude-opus-4-6', family: 'Claude Opus 4.6', tier: 'High', isDisplay: true });
@@ -404,10 +417,15 @@ test('usage by model aggregates effort tiers into model families, merges respons
   const withFuture = {
     days: [
       { date: '2026-11-19', ...bucket(1, 100, 0, 0, 0), models: [{ name: 'Gemini 4 Argon (High)', ...bucket(1, 100, 0, 0, 0) }] },
-      { date: '2026-11-21', ...bucket(1, 500, 0, 0, 0), models: [{ name: 'Gemini 4 Argon (High)', ...bucket(1, 500, 0, 0, 0) }] },
+      {
+        date: '2026-11-21', ...bucket(6, 3000, 0, 0, 0),
+        models: ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'].map(name => ({ name, ...bucket(1, 500, 0, 0, 0) })),
+      },
     ],
   };
-  assert.equal(usageUi.modelView(withFuture, { today: '2026-11-19', period: 'week' }).tokens, 100);
+  const futureWeek = usageUi.modelView(withFuture, { today: '2026-11-19', period: 'week' });
+  assert.equal(futureWeek.tokens, 100);
+  assert.deepEqual(futureWeek.models.map(m => [m.name, m.tokens]), [['Gemini 4 Argon', 100]], 'future-dated models must not crowd real models into Other models');
   assert.equal(usageUi.modelView(withFuture, { today: '2026-11-19', period: 'month' }).tokens, 100);
 });
 

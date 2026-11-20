@@ -226,7 +226,7 @@ export function createUsagePresentation(formatTokens, escapeHtml) {
   // last slot, while effort tiers stay available for hover details.
   function modelView(data = {}, { today = localDay(), period = 'day', shift = 0 } = {}) {
     const unit = SPANS[period] ? period : 'day';
-    const days = data.days || [];
+    const days = (data.days || []).filter(day => !(day.date > today));
     const allTime = new Map();
     const familyLabel = new Map();
     for (const day of days) {
@@ -255,7 +255,6 @@ export function createUsagePresentation(formatTokens, escapeHtml) {
     const bars = usagePeriods(today, unit, Math.min(0, shift)).map(span => ({ ...span, tokens: 0, requests: 0, parts: series.map(() => 0) }));
     const pageParts = emptyParts();
     for (const day of days) {
-      if (day.date > today) continue;
       const bar = bars.find(span => span.from <= day.date && day.date <= span.to);
       if (!bar) continue;
       for (const model of day.models || []) {
@@ -305,7 +304,9 @@ export function createUsagePresentation(formatTokens, escapeHtml) {
       tokens: tokensOf(pageParts),
       requests: pageParts.requests,
       parts: pageParts,
-      models: finalized.filter(entry => entry.tokens > 0).sort((a, b) => b.tokens - a.tokens),
+      models: finalized
+        .filter(entry => entry.tokens > 0)
+        .sort((a, b) => (a.name === null) - (b.name === null) || b.tokens - a.tokens),
       range: `${start} – ${end.slice(0, 4) === start.slice(0, 4) ? end.slice(5) : end}`,
       older: days.length > 0 && first.from > days[0].date,
       newer: shift < 0,

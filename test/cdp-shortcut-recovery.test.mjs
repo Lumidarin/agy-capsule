@@ -110,6 +110,19 @@ test('sidebar scans and repairs only matching links, preserves arguments, and ha
   assert.equal(readArgs(unrelated), '--keep');
 });
 
+test('sidebar never switches the debug port on next to a non-loopback address', windowsOnly, async t => {
+  const { desktop, manager, link } = windowsFixture(t);
+  const remote = link(desktop, 'Remote', '--remote-debugging-address=0.0.0.0');
+  const spaced = link(desktop, 'Spaced', '--remote-debugging-address 192.168.1.10');
+  const local = link(desktop, 'Local', '--remote-debugging-address=localhost');
+  const result = await manager.fixShortcuts();
+  assert.equal(result.updated, 1);
+  assert.equal(result.failed, 2);
+  assert.equal(readArgs(remote), '--remote-debugging-address=0.0.0.0');
+  assert.equal(readArgs(spaced), '--remote-debugging-address 192.168.1.10');
+  assert.equal(readArgs(local), '--remote-debugging-address=localhost --remote-debugging-port=0');
+});
+
 test('sidebar reports partial repair on access denied and can retry after write access returns', windowsOnly, async t => {
   const { desktop, programs, manager, link } = windowsFixture(t);
   const blocked = link(programs, 'Protected', '--keep');

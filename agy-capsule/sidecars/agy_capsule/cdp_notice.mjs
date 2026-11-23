@@ -41,7 +41,13 @@ foreach ($f in $files) {
     $total++
     $arguments = [string]$l.Arguments
     if ($arguments -match $pattern) { continue }
-    # Pin the debug port to loopback too, unless the user already chose an address.
+    # Never switch a debug port on next to a non-loopback bind address; leave it for the user.
+    $flags = [regex]::Matches($arguments, '(?i)(^|\\s)--remote-debugging-address(?=\\s|=|$)')
+    $values = [regex]::Matches($arguments, '(?i)(^|\\s)--remote-debugging-address(?:=|\\s+)([^\\s]+)')
+    $unsafe = $flags.Count -ne $values.Count
+    foreach ($m in $values) { if ($m.Groups[2].Value.Trim([char[]]@([char]34, [char]39)) -notin @('127.0.0.1', 'localhost', '::1', '[::1]')) { $unsafe = $true } }
+    if ($unsafe) { $failed++; continue }
+    # Pin the debug port to loopback too.
     $address = if ($arguments -match '(^|\\s)--remote-debugging-address(=|\\s|$)') { '' } else { ' --remote-debugging-address=127.0.0.1' }
     $expected = "$arguments --remote-debugging-port=0$address".Trim()
     try {

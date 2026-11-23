@@ -24,6 +24,16 @@ $addressName = '--remote-debugging-address'
 $addressText = "$addressName=127.0.0.1"
 $addressAnyPattern = "(^|\s)$([regex]::Escape($addressName))(=|\s|$)"
 $addressOwnPattern = "(^|\s)$([regex]::Escape($addressText))(?=\s|$)"
+# Never switch a debug port on next to a bind address that is not loopback; same rule as the IDE extension.
+function Test-NonLoopbackAddress([string]$arguments) {
+    $flags = [regex]::Matches($arguments, '(?i)(^|\s)--remote-debugging-address(?=\s|=|$)')
+    $values = [regex]::Matches($arguments, '(?i)(^|\s)--remote-debugging-address(?:=|\s+)([^\s]+)')
+    if ($flags.Count -ne $values.Count) { return $true }
+    foreach ($match in $values) {
+        if ($match.Groups[2].Value.Trim([char[]]@([char]34, [char]39)) -notin @('127.0.0.1', 'localhost', '::1', '[::1]')) { return $true }
+    }
+    return $false
+}
 $shell = New-Object -ComObject WScript.Shell
 
 # Messages are collected per language and printed as an [English] block, then a [中文] block.
@@ -42,13 +52,13 @@ $shortcuts = @(foreach ($directory in $ShortcutDirectories | Where-Object { $_ -
     foreach ($file in Get-ChildItem -LiteralPath $directory -Recurse -Filter *.lnk -ErrorAction SilentlyContinue) {
         $link = $shell.CreateShortcut($file.FullName)
         if ($link.TargetPath -and (Split-Path -Leaf $link.TargetPath) -eq 'Antigravity.exe') {
-            [pscustomobject]@{ Path = $file.FullName; Link = $link; HasSwitch = ([string]$link.Arguments -match $switchPattern) }
+            [pscustomobject]@{ Path = $file.FullName; Link = $link; HasSwitch = ([string]$link.Arguments -match $switchPattern); Unsafe = (Test-NonLoopbackAddress ([string]$link.Arguments)) }
         }
     }
 })
 
 if ($Ask) {
-    $missing = @($shortcuts | Where-Object { -not $_.HasSwitch })
+    $missing = @($shortcuts | Where-Object { -not $_.HasSwitch -and -not $_.Unsafe })
     if ($shortcuts.Count -eq 0) {
         Say "Footer capsule: if it doesn't appear, start Antigravity with $switchText (see README)." "底栏胶囊：如果没有显示，请带上 $switchText 启动 Antigravity（见 README）。"
         Flush
@@ -57,7 +67,7 @@ if ($Ask) {
     if ($missing.Count -eq 0) { exit 0 }
     Write-Host ''
     Say "Newer Antigravity versions need $switchText for the footer capsule under the input box." "新版 Antigravity 需要带上 $switchText 启动，输入框下方的底栏胶囊才能显示。"
-    Say 'This adds it to these Antigravity shortcuts (undo with scripts\enable-cdp.ps1 -Undo):' '将给以下 Antigravity 快捷方式加上这个参数（可用 scripts\enable-cdp.ps1 -Undo 撤销）：'
+    Say "This adds it, plus $addressText (loopback only), to these Antigravity shortcuts (undo with scripts\enable-cdp.ps1 -Undo):" "将给以下 Antigravity 快捷方式加上这个参数和 $addressText（仅限本机），可用 scripts\enable-cdp.ps1 -Undo 撤销："
     $missing | ForEach-Object { Say "  $($_.Path)" "  $($_.Path)" }
     Flush
     if ([Console]::IsInputRedirected) {
@@ -86,6 +96,7 @@ foreach ($shortcut in $shortcuts) {
         $next = (($arguments -replace $switchPattern, '') -replace $addressOwnPattern, '').Trim()
     } else {
         if ($shortcut.HasSwitch) { Say "Already set: $($shortcut.Path)" "已设置：$($shortcut.Path)"; continue }
+        if (Test-NonLoopbackAddress $arguments) { Say "Skipped (it has a non-loopback $addressName; change that yourself first): $($shortcut.Path)" "已跳过（里面有非本机的 $addressName，请先自行修改）：$($shortcut.Path)"; continue }
         $address = if ($arguments -match $addressAnyPattern) { '' } else { " $addressText" }
         $next = "$arguments $switchText$address".Trim()
     }

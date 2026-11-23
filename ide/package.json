@@ -3,7 +3,7 @@
   "displayName": "agy-capsule",
   "description": "Conversation telemetry and model quota in the Antigravity IDE chat composer.",
   "publisher": "lumidarin",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "icon": "ide/logo.png",
   "license": "MIT",
   "repository": "https://github.com/Lumidarin/agy-capsule",

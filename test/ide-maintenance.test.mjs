@@ -1,25 +1,21 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { checkIdeRelease, createMaintenance, repairIdeShortcuts } from '../ide/maintenance.cjs';
-const asset = (version, tag = 'ide-' + version) => ({ name: `agy-capsule-ide-${version}.vsix`, state: 'uploaded', size: 30000,
-  browser_download_url: `https://github.com/Lumidarin/agy-capsule/releases/download/${tag}/agy-capsule-ide-${version}.vsix` });
-const fetchRelease = releases => async () => ({ ok: true, json: async () => releases });
-test('IDE updates use stable IDE asset versions, never desktop release tags', async () => {
-  assert.equal((await checkIdeRelease('0.1.6', fetchRelease([{ tag_name: 'v9.9.9', assets: [] }]))).status, 'unpublished');
-  const result = await checkIdeRelease('0.1.6', fetchRelease([{ tag_name: 'v1.4.11', assets: [asset('0.1.7', 'v1.4.11'), asset('0.1.5', 'v1.4.11')] }]));
-  assert.equal(result.status, 'available'); assert.equal(result.version, '0.1.7');
-  assert.match(result.assetUrl, /agy-capsule-ide-0.1.7.vsix$/);
-  assert.equal((await checkIdeRelease('0.1.8', fetchRelease([{ tag_name: 'ide-0.1.7', assets: [asset('0.1.7')] }]))).status, 'current');
+const listing = version => ({ namespace: 'lumidarin', name: 'agy-capsule-ide', version, preRelease: false, downloadable: true });
+const fetchRelease = data => async () => ({ ok: true, json: async () => data });
+test('Open VSX checks the correct stable extension and compares numeric versions', async () => {
+  const result = await checkIdeRelease('0.2.9', fetchRelease(listing('0.2.10')));
+  assert.deepEqual(result, { status: 'available', currentVersion: '0.2.9', version: '0.2.10' });
+  for (const v of ['0.2.10','0.2.11']) assert.equal((await checkIdeRelease(v, fetchRelease(listing('0.2.10')))).status, 'current');
 });
-test('draft, external, desktop and invalid IDE assets are ignored', async () => {
-  const result = await checkIdeRelease('0.1.6', fetchRelease([{ draft: true, assets: [asset('9.9.9')] },
-    { tag_name: 'v1', assets: [{ ...asset('9.9.8'), browser_download_url: 'https://evil.invalid/agy-capsule-ide-9.9.8.vsix' },
-      { ...asset('9.9.7'), browser_download_url: 'https://github.com/Lumidarin/agy-capsule/releases/download/a/wrong.vsix' }, { name: 'App.vsix' }] }]));
-  assert.equal(result.status, 'unpublished');
+test('wrong publisher or extension, invalid versions and unreleased entries never offer an install', async () => {
+  for (const change of [{ namespace: 'other' }, { name: 'other' }, { version: '9.0.0/../bad' }, { preRelease: true }, { downloadable: false }])
+    assert.equal((await checkIdeRelease('0.2.0', fetchRelease({ ...listing('0.2.1'), ...change }))).status, 'error');
 });
 test('update failure is not reported as current or unpublished', async () => {
   assert.deepEqual(await checkIdeRelease('0.1.6', async () => { throw Error('offline'); }), { status: 'error', reason: 'network' });
@@ -27,7 +23,7 @@ test('update failure is not reported as current or unpublished', async () => {
 function harness(everOk = false, notify = true) {
   const calls = [], state = new Map([['agyCapsule.cdpEverOk', everOk]]);
   const vscode = { env: { language: 'en', appRoot: 'C:/IDE/resources/app', openExternal: async u => calls.push(['open', u]) }, Uri: { parse: x => x },
-    commands: { executeCommand: async x => calls.push(['command', x]) }, window: { showInformationMessage: async (...args) => { calls.push(['notice', ...args]); return undefined; } } };
+    commands: { executeCommand: async (...args) => calls.push(['command', ...args]) }, window: { showInformationMessage: async (...args) => { calls.push(['notice', ...args]); return undefined; } } };
   const context = { globalState: { get: (k, d) => state.has(k) ? state.get(k) : d, update: async (k, v) => state.set(k, v) }, extension: { packageJSON: { version: '0.1.6' } } };
   return { calls, vscode, context, make: opts => createMaintenance({ vscode, context, getPrefs: () => ({ notifyCdpRestart: notify }), ...opts }) };
 }
@@ -41,9 +37,9 @@ test('disabled restart notices and disposed maintenance do not alert', () => {
   const h = harness(true, false), m = h.make(); ['unreachable','unreachable','unreachable'].forEach(m.observeCdp); assert.equal(h.calls.length, 0);
   m.dispose(); m.observeCdp('ok'); assert.equal(h.calls.length, 0);
 });
-test('manual check explains unpublished IDE package and native installation is delegated', async () => {
-  const h = harness(), m = h.make({ fetchImpl: fetchRelease([{ tag_name: 'v3.0.0', assets: [] }]) });
-  assert.equal((await m.checkUpdates({ manual: true })).status, 'unpublished'); assert.match(h.calls[0][1], /No IDE VSIX release/);
+test('a missing listing is not reported as current; native local installation remains independent', async () => {
+  const h = harness(), m = h.make({ fetchImpl: async () => ({ ok: false, status: 404 }) });
+  assert.equal((await m.checkUpdates({ manual: true })).reason, 'notListed'); assert.match(h.calls[0][1], /Could not confirm/);
   await m.installVsix(); assert.deepEqual(h.calls[1], ['command', 'workbench.extensions.action.installVSIX']);
 });
 test('Windows repair modifies only exact IDE target in isolated shortcut fixture', { skip: process.platform !== 'win32' }, async t => {
@@ -63,23 +59,41 @@ test('Windows repair modifies only exact IDE target in isolated shortcut fixture
   assert.equal((await repairIdeShortcuts({ executablePath: ide, roots: [links] })).updated, 0);
 });
 
-test('background checks are cached and announce a release once; tests and opt-out do not fetch', async () => {
-  const h = harness(); let reads = 0; const fetchImpl = async (...args) => { reads++; return fetchRelease([{ tag_name: 'ide-0.1.7', assets: [asset('0.1.7')] }])(...args); };
-  const m = h.make({ fetchImpl }); await m.checkUpdates(); await m.checkUpdates(); assert.equal(reads, 1); assert.equal(h.calls.length, 1);
-  await m.downloadUpdate(); assert.equal(h.calls[1][0], 'open'); assert.match(h.calls[1][1], /agy-capsule-ide-0.1.7.vsix$/);
-  const disabled = h.make({ getPrefs: () => ({ notifyUpdates: false }), fetchImpl }); await disabled.checkUpdates(); assert.equal(reads, 1);
-  h.context.extensionMode = 3; h.vscode.ExtensionMode = { Test: 3 }; const inTest = h.make({ fetchImpl }); await inTest.checkUpdates(); assert.equal(reads, 1);
+test('background notices stay cached, manual checks refresh Open VSX and only install on click', async () => {
+  const h = harness(), requests = []; let v = '0.2.1', tick = 100;
+  const fetchImpl = async (url, opts) => { requests.push(url); assert.equal(opts.cache, 'no-store'); return fetchRelease(listing(v))(); };
+  const m = h.make({ fetchImpl, now: () => ++tick });
+  await m.checkUpdates(); await m.checkUpdates(); assert.equal(requests.length, 1); assert.equal(h.calls.length, 1);
+  assert.match(requests[0], /^https:\/\/open-vsx\.org\/api\/lumidarin\/agy-capsule-ide\/latest\?check=\d+$/);
+  v = '0.2.2'; h.vscode.window.showInformationMessage = async (...args) => args.includes('Update now') ? 'Update now' : undefined;
+  await m.checkUpdates({ manual: true }); assert.equal(requests.length, 2); assert.notEqual(requests[0], requests[1]);
+  assert.deepEqual(h.calls[1], ['command', 'workbench.extensions.installExtension', 'lumidarin.agy-capsule-ide@0.2.2']);
+  await h.make({ getPrefs: () => ({ notifyUpdates: false }), fetchImpl }).checkUpdates();
+  h.context.extensionMode = 3; h.vscode.ExtensionMode = { Test: 3 }; await h.make({ fetchImpl }).checkUpdates();
+  assert.equal(requests.length, 2);
 });
 
-test('release asset paths must match the release tag and cannot escape the repository after URL normalization', async () => {
-  const version = '0.1.7', name = 'agy-capsule-ide-0.1.7.vsix';
-  for (const url of [
-    'https://github.com/Lumidarin/agy-capsule/releases/download/ide-0.1.7/../../../../other/releases/download/x/' + name,
-    'https://github.com/Lumidarin/agy-capsule/releases/download/ide-0.1.7/%2e%2e/' + name,
-    'https://github.com/Lumidarin/agy-capsule/releases/download/not-this-tag/' + name,
-  ]) {
-    const result = await checkIdeRelease('0.1.6', fetchRelease([{ tag_name: 'ide-0.1.7', assets: [{ ...asset(version), browser_download_url: url }] }]));
-    assert.equal(result.status, 'unpublished');
+test('only a missing gallery version falls back, and the Open VSX bytes must match the checksum', async () => {
+  for (const mode of ['missing','bad digest','cancelled']) {
+    const h = harness(), urls = [], installs = [], body = Buffer.from('store-package');
+    h.vscode.Uri.file = path => ({ fsPath: path });
+    h.vscode.window.showInformationMessage = async (_msg, action) => action === 'Update now' ? action : undefined;
+    h.vscode.window.showWarningMessage = async () => {};
+    h.vscode.commands.executeCommand = async (_cmd, arg) => {
+      installs.push(arg);
+      if (typeof arg === 'string') throw Object.assign(Error('gallery'), { name: mode === 'cancelled' ? 'Canceled' : 'NotFound' });
+      assert.deepEqual(readFileSync(arg.fsPath), body);
+    };
+    const fetchImpl = async url => {
+      if (url.includes('/latest?')) return fetchRelease(listing('0.2.1'))();
+      urls.push(url); assert.ok(url.startsWith('https://open-vsx.org/api/lumidarin/agy-capsule-ide/0.2.1/file/lumidarin.agy-capsule-ide-0.2.1.'));
+      return { ok: true, text: async () => mode === 'bad digest' ? '0'.repeat(64) : createHash('sha256').update(body).digest('hex'),
+        arrayBuffer: async () => body };
+    };
+    const result = await h.make({ fetchImpl }).checkUpdates({ manual: true });
+    assert.equal(result.status === 'error', mode !== 'missing'); assert.equal(installs.length, mode === 'missing' ? 2 : 1);
+    assert.equal(urls.length, mode === 'cancelled' ? 0 : 2);
+    if (installs[1]) assert.equal(existsSync(installs[1].fsPath), false);
   }
 });
 test('shortcut repair preserves non-loopback addresses and does not activate a debug port', { skip: process.platform !== 'win32' }, async t => {

@@ -6,7 +6,7 @@
 2. 用 IDE 的 **Extensions: Install from VSIX…** 选择生成的安装包，或运行：
 
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\Antigravity IDE\bin\antigravity-ide.cmd" --install-extension .\dist\agy-capsule-ide-0.2.1.vsix --force
+   & "$env:LOCALAPPDATA\Programs\Antigravity IDE\bin\antigravity-ide.cmd" --install-extension .\dist\agy-capsule-ide-0.2.3.vsix --force
    ```
 
 3. 完全退出 IDE，再用下列参数启动一次（Windows 开始菜单快捷方式也可保留这两个参数）：
@@ -22,7 +22,7 @@
 **打开侧栏：** 点击左侧活动栏的胶囊图标。也可以执行 **agy-capsule: Show Details**。
 
 - **统计**：上下文、缓存、本轮请求和额度，以及默认开启的 Token 活动热力图（日/周）和按模型统计（日/周/月，可翻页）。
-- **设置**：调整语言、布局、提醒阈值、底栏显示和统计区块。首次使用从桌面版偏好初始化，之后保存在 IDE 扩展自己的配置里。可点「检查插件更新」「本地安装VSIX」或「设置对话记录的读取位置」，也可切换更新提醒。Windows 可按需修复 IDE 启动快捷方式。更新检查仅认本项目正式 release 的 IDE VSIX，不会把桌面 App 版本当成 IDE 更新；安装使用 IDE 自己的安装流程。
+- **设置**：调整语言、布局、提醒阈值、底栏显示和统计区块。首次使用从桌面版偏好初始化，之后保存在 IDE 扩展自己的配置里。可点「检查插件更新」「本地安装VSIX」或「设置对话记录的读取位置」，也可切换更新提醒。Windows 可按需修复 IDE 启动快捷方式。从 0.2.2 起，手动检查直接读取 Open VSX；发现新版后点「立即更新」，不用去 GitHub 下载。若 IDE 商店索引尚未同步，扩展会从 Open VSX 取同一版本的包、核对 SHA-256，再交给 IDE 安装。更新提醒不会擅自安装或重启。
 - **模型**：默认启用增强选择器和思考强度滑条，可恢复原生、显示/隐藏模型、调整标签、圆点及滑条外观。展示可选模型依赖已连接的输入框。
 - **固定历史对话**：**agy-capsule: Select Conversation** 只固定侧栏 / 状态栏，不改变当前聊天输入框。内嵌聊天统计使用 `~/.gemini/antigravity/conversations`，该目录也包含桌面 App 记录；旧原生聊天使用 `~/.gemini/antigravity-ide/conversations`。
 

@@ -15,6 +15,7 @@ with tempfile.TemporaryDirectory() as staging:
     for src, dst in [
         ("ide/package.json", "package.json"), ("ide/README.md", "README.md"), ("LICENSE", "LICENSE"),
         ("ide/sidebar.mjs", "ide/sidebar.mjs"), ("ide/capsule.svg", "ide/capsule.svg"),
+        ("ide/logo.png", "ide/logo.png"),
         *((f"ide/{name}", f"ide/{name}") for name in (
             "billing.mjs", "cloud.mjs", "data_roots.mjs", "maintenance.cjs", "cli_quota.cjs")),
         ("ide/composer.mjs", "ide/composer.mjs"), ("ide/extension.cjs", "ide/extension.cjs"), ("ide/host.mjs", "ide/host.mjs"),

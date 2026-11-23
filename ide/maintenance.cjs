@@ -1,34 +1,56 @@
 const { execFile } = require('node:child_process');
 const { resolve, basename, join } = require('node:path');
+const { tmpdir } = require('node:os');
+const { mkdtemp, writeFile, rm } = require('node:fs/promises');
+const { createHash } = require('node:crypto');
 
-const RELEASES = 'https://api.github.com/repos/Lumidarin/agy-capsule/releases?per_page=100';
-const RELEASES_PAGE = 'https://github.com/Lumidarin/agy-capsule/releases';
-const IDE_ASSET = /^agy-capsule-ide-(\d+\.\d+\.\d+)\.vsix$/;
-const versionParts = value => /^\d+\.\d+\.\d+$/.test(value || '') ? value.split('.').map(Number) : null;
+const STORE_ID = 'lumidarin.agy-capsule-ide';
+const STORE_API = 'https://open-vsx.org/api/lumidarin/agy-capsule-ide';
+const versionParts = value => typeof value === 'string' && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value) ? value.split('.').map(Number) : null;
 const compare = (a, b) => { const x = versionParts(a), y = versionParts(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return Math.sign(x[i] - y[i]); return 0; };
 
-async function checkIdeRelease(currentVersion, fetchImpl = fetch) {
+async function checkIdeRelease(currentVersion, fetchImpl = fetch, now = Date.now) {
   if (!versionParts(currentVersion)) return { status: 'error', reason: 'localVersion' };
   try {
-    const response = await fetchImpl(RELEASES, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'agy-capsule-ide' }, redirect: 'error', signal: AbortSignal.timeout(5000) });
-    if (!response.ok) return { status: 'error', reason: response.status === 403 || response.status === 429 ? 'rateLimit' : 'http' };
-    const releases = await response.json();
-    if (!Array.isArray(releases)) return { status: 'error', reason: 'response' };
-    const candidates = releases.filter(r => !r.draft && !r.prerelease).flatMap(r => (r.assets || []).flatMap(a => {
-      const match = IDE_ASSET.exec(a.name || '');
-      if (!match || a.state !== 'uploaded' || !Number.isSafeInteger(a.size) || a.size <= 0) return [];
-      // A desktop App tag/version is deliberately not used to version the IDE.
-      const expected = 'https://github.com/Lumidarin/agy-capsule/releases/download/';
-      if (typeof a.browser_download_url !== 'string' || !a.browser_download_url.startsWith(expected)) return [];
-      const assetUrl = new URL(a.browser_download_url);
-      const assetPath = '/Lumidarin/agy-capsule/releases/download/' + encodeURIComponent(r.tag_name) + '/' + encodeURIComponent(a.name);
-      if (assetUrl.origin !== 'https://github.com' || assetUrl.username || assetUrl.password || assetUrl.search || assetUrl.hash || assetUrl.pathname !== assetPath) return [];
-      return [{ version: match[1], assetUrl: assetUrl.href, releaseUrl: RELEASES_PAGE + '/tag/' + encodeURIComponent(r.tag_name) }];
-    })).sort((a, b) => compare(b.version, a.version));
-    const newest = candidates[0];
-    if (!newest) return { status: 'unpublished', currentVersion };
-    return { status: compare(newest.version, currentVersion) > 0 ? 'available' : 'current', currentVersion, ...newest };
+    // A previously cached "not found" on the gallery must not mask a newly published version.
+    const response = await fetchImpl(STORE_API + '/latest?check=' + now(), {
+      headers: { Accept: 'application/json' }, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return { status: 'error', reason: response.status === 404 ? 'notListed' : response.status === 429 ? 'rateLimit' : 'http' };
+    const meta = await response.json();
+    if (meta?.namespace !== 'lumidarin' || meta.name !== 'agy-capsule-ide' || !versionParts(meta.version) ||
+        meta.preRelease !== false || meta.downloadable !== true) return { status: 'error', reason: 'response' };
+    return { status: compare(meta.version, currentVersion) > 0 ? 'available' : 'current', currentVersion, version: meta.version };
   } catch { return { status: 'error', reason: 'network' }; }
+}
+
+async function installStoreVersion(vscode, version, fetchImpl = fetch) {
+  const command = 'workbench.extensions.installExtension';
+  try { await vscode.commands.executeCommand(command, STORE_ID + '@' + version); return; }
+  catch (error) {
+    // Never substitute a VSIX after a cancellation, permission or compatibility error.
+    if (error?.name !== 'NotFound' && error?.code !== 'NotFound' &&
+        !/requested version .* was not found/i.test(error?.message || '')) throw error;
+  }
+  // The native index can still have a negative cache entry. Get the immutable
+  // version directly from Open VSX; use the native installer, not a browser.
+  const stem = STORE_ID + '-' + version;
+  const base = STORE_API + '/' + version + '/file/' + stem;
+  const get = async suffix => {
+    const res = await fetchImpl(base + suffix, { signal: AbortSignal.timeout(30000) });
+    if (!res.ok) throw new Error('Open VSX file unavailable');
+    return res;
+  };
+  const [digest, bytes] = await Promise.all([
+    get('.sha256').then(r => r.text()), get('.vsix').then(r => r.arrayBuffer()).then(b => Buffer.from(b)),
+  ]);
+  if (createHash('sha256').update(bytes).digest('hex') !== digest.trim().toLowerCase()) throw new Error('Open VSX checksum mismatch');
+  const dir = await mkdtemp(join(tmpdir(), 'agy-capsule-update-'));
+  try {
+    const file = join(dir, stem + '.vsix');
+    await writeFile(file, bytes);
+    await vscode.commands.executeCommand(command, vscode.Uri.file(file));
+  } finally { await rm(dir, { recursive: true, force: true }); }
 }
 
 // Runs only after an explicit repair command; default roots are the current
@@ -114,36 +136,42 @@ function createMaintenance({ vscode, context, getPrefs = () => ({}), executableP
     return result;
   }
   async function loadUpdate(manual) {
-    if (!checked || now() - checkedAt >= (manual ? 5000 : 6 * 60 * 60_000)) {
-      checking ??= checkIdeRelease(context.extension.packageJSON.version, fetchImpl).then(result => { checked = result; checkedAt = now(); return result; }).finally(() => { checking = null; });
-      await checking;
+    if (manual || !checked || now() - checkedAt >= 6 * 60 * 60_000) {
+      checking ??= checkIdeRelease(context.extension.packageJSON.version, fetchImpl, now).then(result => { checked = result; checkedAt = now(); return result; }).finally(() => { checking = null; });
+      return checking;
     }
     return checked;
   }
-  async function downloadUpdate() {
-    const result = await loadUpdate(true);
-    if (disposed) return result;
-    if (result.status === 'available') await vscode.env.openExternal(vscode.Uri.parse(result.assetUrl));
-    else await vscode.window.showInformationMessage(text('No newer published IDE VSIX is available to download.', '未找到可下载的新版 IDE VSIX 包。'));
-    return result;
-  }
   async function checkUpdates({ manual = false } = {}) {
     if (!manual && (getPrefs().notifyUpdates === false || (vscode.ExtensionMode?.Test !== undefined && context.extensionMode === vscode.ExtensionMode.Test))) return null;
-    await loadUpdate(manual);
-    if (disposed || (!manual && (checked.status !== 'available' || announcedVersion === checked.version))) return checked;
-    if (!manual) announcedVersion = checked.version;
-    const install = text('Install VSIX…', '安装 VSIX…'), release = text('Release notes', '版本说明'), download = text('Download VSIX', '下载 VSIX');
-    const messages = {
-      available: text(`agy-capsule IDE ${checked.version} is available.`, `agy-capsule IDE ${checked.version} 已发布。`),
-      current: text(`No newer published IDE package was found (installed ${checked.currentVersion}).`, `没有找到比本机 ${checked.currentVersion} 更新的已发布 IDE 包。`),
-      unpublished: text(`No IDE VSIX release is published yet. Installed ${checked.currentVersion}; desktop App versions are not IDE updates.`, `尚未发现已发布的 IDE VSIX 包。本机为 ${checked.currentVersion}；桌面 App 版本不能当成 IDE 更新。`),
-      error: text('IDE update check failed. The installed version was not changed.', 'IDE 更新检查失败，未改动已安装版本。'),
-    };
-    const action = await vscode.window.showInformationMessage(messages[checked.status], ...(checked.status === 'available' ? [download, install, release] : manual ? [install] : []));
-    if (action === install) await installVsix();
-    else if (action === download) await vscode.env.openExternal(vscode.Uri.parse(checked.assetUrl));
-    else if (action === release) await vscode.env.openExternal(vscode.Uri.parse(checked.releaseUrl));
-    return checked;
+    const result = await loadUpdate(manual);
+    if (disposed || (!manual && (result.status !== 'available' || announcedVersion === result.version))) return result;
+    if (!manual) announcedVersion = result.version;
+    const update = text('Update now', '立即更新');
+    const message = result.status === 'available'
+      ? text(`Open VSX: agy-capsule ${result.currentVersion} → ${result.version}.`, `Open VSX 有新版：胶囊 ${result.currentVersion} → ${result.version}。`)
+      : result.status === 'current'
+      ? text(`Installed: ${result.currentVersion}. Open VSX: ${result.version}. No update needed.`, `已安装 ${result.currentVersion}，Open VSX 为 ${result.version}，无需更新。`)
+      : text('Could not confirm the Open VSX version. Try checking again later.', '暂时查不到 Open VSX 的版本，请稍后再点检查。');
+    const action = await vscode.window.showInformationMessage(message, ...(result.status === 'available' ? [update] : []));
+    if (!disposed && result.status === 'available' && action === update) {
+      try {
+        await installStoreVersion(vscode, result.version, fetchImpl);
+      } catch {
+        await vscode.window.showWarningMessage(text(
+          `The IDE could not install ${result.version} from the store. Try checking again shortly.`,
+          `IDE 未能从商店安装 ${result.version}，请稍后再点检查重试。`));
+        return { ...result, status: 'error', reason: 'install' };
+      }
+      if (!disposed) {
+        const restart = text('Restart extensions', '重启扩展');
+        const choice = await vscode.window.showInformationMessage(text(
+          `Installed agy-capsule ${result.version}. Restart extensions to use it now.`,
+          `已安装胶囊 ${result.version}，重启扩展即可使用新版。`), restart);
+        if (choice === restart) await vscode.commands.executeCommand('workbench.action.restartExtensionHost');
+      }
+    }
+    return result;
   }
   function observeCdp(state) {
     if (disposed) return;
@@ -154,6 +182,6 @@ function createMaintenance({ vscode, context, getPrefs = () => ({}), executableP
     const fix = text('Repair IDE shortcut', '修复 IDE 快捷方式');
     void vscode.window.showInformationMessage(text('agy-capsule: IDE input capsules lost their local debugging connection. Sidebar statistics remain available.', 'agy-capsule：IDE 输入框胶囊的本机调试连接已断开，侧栏统计仍可使用。'), ...(process.platform === 'win32' ? [fix] : [])).then(action => { if (!disposed && action === fix) return repairShortcuts(); });
   }
-  return { observeCdp, checkUpdates, downloadUpdate, installVsix, repairShortcuts, dispose() { disposed = true; } };
+  return { observeCdp, checkUpdates, installVsix, repairShortcuts, dispose() { disposed = true; } };
 }
 module.exports = { checkIdeRelease, repairIdeShortcuts, createMaintenance, shortcutScript };

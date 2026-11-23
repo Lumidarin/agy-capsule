@@ -241,7 +241,6 @@ exports.activate = async function activate(context) {
     }),
     vscode.commands.registerCommand('agyCapsule.checkUpdates', () => maintenance.checkUpdates({ manual: true })),
     vscode.commands.registerCommand('agyCapsule.installVsix', () => maintenance.installVsix()),
-    vscode.commands.registerCommand('agyCapsule.downloadUpdate', () => maintenance.downloadUpdate()),
     vscode.commands.registerCommand('agyCapsule.repairShortcut', () => maintenance.repairShortcuts()));
   subscriptions.push(maintenance, vscode.workspace.onDidChangeWorkspaceFolders(() => {
     cliReader?.dispose(); cliReader = undefined; cliSample = null;

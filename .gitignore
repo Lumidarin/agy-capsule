@@ -12,5 +12,6 @@ Thumbs.db
 /dist/
 /.remotion/
 
-# Internal task checklist (kept local only)
+# Internal task checklists (kept local only)
 /TASKS.md
+/TODO.md

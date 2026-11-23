@@ -938,8 +938,11 @@ function pageMount(d, childAnchor = null) {
     else window.__agyCapsuleCleanup = root._dispose;
 
     const groups = [...root.querySelectorAll('.dk-grp')];
-    const overlays = childSidebar ? groups.map(grp => grp.querySelector('.dk-pop')) : [];
-    for (const pop of overlays) pop.popover = 'manual';
+    const overlays = groups.map(grp => grp.querySelector('.dk-pop')).filter(Boolean);
+    const useTopLayer = overlays.length > 0 && overlays.every(pop => typeof pop.showPopover === 'function');
+    if (useTopLayer) {
+      for (const pop of overlays) pop.popover = 'manual';
+    }
     const closePinned = root._closePinned = (dismiss = false) => {
       const pinned = root._pinnedGroup;
       if (pinned) {
@@ -947,7 +950,7 @@ function pageMount(d, childAnchor = null) {
         if (dismiss) pinned.dataset.dismissed = 'true';
         pinned.querySelector('.dk-pill').setAttribute('aria-expanded', 'false');
         const pop = pinned.querySelector('.dk-pop');
-        if (pop.matches(':popover-open')) pop.hidePopover();
+        if (useTopLayer && pop.matches(':popover-open')) pop.hidePopover();
       }
       root._pinnedGroup = null;
       root.removeAttribute('data-pinned');
@@ -955,10 +958,13 @@ function pageMount(d, childAnchor = null) {
     root._layoutPopovers = (grp = root._pinnedGroup || root.querySelector('.dk-grp:hover')) => {
       const pop = grp && !grp.hidden && !grp.dataset.dismissed && !root.classList.contains('dk-hide-all')
         ? grp.querySelector('.dk-pop') : null;
-      // A sidebar strip sits in its own stacking context below the native
-      // composer. Only its panel needs to escape into the browser's top layer.
-      for (const overlay of overlays) {
-        if (overlay !== pop && overlay.matches(':popover-open')) overlay.hidePopover();
+      // Composer strips can sit in a stacking context below sibling overlays
+      // such as the native Queued Messages tray or sidebar composer. Promote
+      // the open panel into the browser's top layer so it renders above them.
+      if (useTopLayer) {
+        for (const overlay of overlays) {
+          if (overlay !== pop && overlay.matches(':popover-open')) overlay.hidePopover();
+        }
       }
       if (!pop && root.dataset.panelLayout !== 'matched') {
         root._fitPanelHeights?.();
@@ -978,7 +984,7 @@ function pageMount(d, childAnchor = null) {
       const limit = `${Math.max(0, maxRight - minLeft)}px`;
       if (root.style.getPropertyValue('--dk-pop-max-width') !== limit) root.style.setProperty('--dk-pop-max-width', limit);
       root._fitPanelHeights?.();
-      if (pop && childSidebar && !pop.matches(':popover-open')) pop.showPopover();
+      if (pop && useTopLayer && !pop.matches(':popover-open')) pop.showPopover();
       const width = pop?.getBoundingClientRect().width;
       if (!width) return;
       const pill = grp.querySelector('.dk-pill').getBoundingClientRect();
@@ -986,8 +992,8 @@ function pageMount(d, childAnchor = null) {
       const stripLeft = (firstGrp || root).getBoundingClientRect().left;
       let left = Math.max(stripLeft, pill.right - width);
       left = Math.max(minLeft, Math.min(left, maxRight - width));
-      pop.style.left = (childSidebar ? left : left - grp.getBoundingClientRect().left) + 'px';
-      if (childSidebar) pop.style.bottom = (innerHeight - pill.top + 8) + 'px';
+      pop.style.left = (useTopLayer ? left : left - grp.getBoundingClientRect().left) + 'px';
+      if (useTopLayer) pop.style.bottom = (innerHeight - pill.top + 8) + 'px';
     };
     for (const grp of groups) {
       grp.addEventListener('mouseenter', () => {
@@ -1002,8 +1008,9 @@ function pageMount(d, childAnchor = null) {
         grp.querySelector('.dk-pill').setAttribute('aria-expanded', 'false');
         const pop = grp.querySelector('.dk-pop');
         if (pop) {
-          if (pop.matches(':popover-open')) pop.hidePopover();
+          if (useTopLayer && pop.matches(':popover-open')) pop.hidePopover();
           pop.style.left = '';
+          pop.style.bottom = '';
         }
       });
       grp.querySelector('.dk-pill').addEventListener('click', (event) => {

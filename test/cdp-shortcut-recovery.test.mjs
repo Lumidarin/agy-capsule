@@ -82,6 +82,7 @@ function readArgs(file) {
 test('sidebar scans and repairs only matching links, preserves arguments, and handles an empty match set', windowsOnly, async t => {
   const { root, desktop, programs, manager, link } = windowsFixture(t);
   const flag = '--remote-debugging-port=0';
+  const added = flag + ' --remote-debugging-address=127.0.0.1';
   const original = '--profile "Work Space"  --disable-gpu';
   const plain = link(desktop, 'Plain', '');
   const quoted = link(programs, 'Quoted args', original);
@@ -92,15 +93,15 @@ test('sidebar scans and repairs only matching links, preserves arguments, and ha
 
   assert.equal(await manager.checkShortcuts(), 'missing');
   assert.deepEqual(await manager.fixShortcuts(), { ok: true, reason: 'ok', updated: 2, failed: 0, total: 3, shortcutState: 'ok' });
-  assert.equal(readArgs(plain), flag);
-  assert.equal(readArgs(quoted), original + ' ' + flag);
+  assert.equal(readArgs(plain), added);
+  assert.equal(readArgs(quoted), original + ' ' + added);
   assert.equal(readArgs(configured), flag + ' --disable-gpu');
   assert.equal(readArgs(unrelated), '--keep');
   assert.equal(await manager.checkShortcuts(), 'ok');
   manager.observe('unreachable');
   assert.deepEqual(manager.info(), { state: 'unreachable', hadBefore: true, shortcutState: 'ok', canFixShortcut: false });
   assert.deepEqual(await manager.fixShortcuts(), { ok: true, reason: 'ok', updated: 0, failed: 0, total: 3, shortcutState: 'ok' });
-  assert.equal(readArgs(quoted), original + ' ' + flag);
+  assert.equal(readArgs(quoted), original + ' ' + added);
 
   for (const file of [plain, quoted, configured]) rmSync(file);
   assert.equal(await manager.checkShortcuts(), 'unknown');
@@ -122,13 +123,13 @@ test('sidebar reports partial repair on access denied and can retry after write 
     assert.equal(await manager.checkShortcuts(), 'missing');
     assert.equal(manager.info().canFixShortcut, true);
     assert.equal(readArgs(blocked), '--keep');
-    assert.equal(readArgs(writable), '--remote-debugging-port=0');
+    assert.equal(readArgs(writable), '--remote-debugging-port=0 --remote-debugging-address=127.0.0.1');
   } finally {
     execFileSync('icacls.exe', [programs, '/remove:d', sid]);
   }
   assert.deepEqual(await manager.fixShortcuts(), { ok: true, reason: 'ok', updated: 1, failed: 0, total: 2, shortcutState: 'ok' });
-  assert.equal(readArgs(blocked), '--keep --remote-debugging-port=0');
-  assert.equal(readArgs(writable), '--remote-debugging-port=0');
+  assert.equal(readArgs(blocked), '--keep --remote-debugging-port=0 --remote-debugging-address=127.0.0.1');
+  assert.equal(readArgs(writable), '--remote-debugging-port=0 --remote-debugging-address=127.0.0.1');
   assert.equal(await manager.checkShortcuts(), 'ok');
 });
 
@@ -160,7 +161,7 @@ catch { if ($_.CategoryInfo.Category -ne 'PermissionDenied') { throw }; 'denied'
     execFileSync('icacls.exe', [programs, '/remove:d', sid]);
   }
   assert.equal((await manager.fixShortcuts()).ok, true);
-  assert.equal(readArgs(file), '--remote-debugging-port=0');
+  assert.equal(readArgs(file), '--remote-debugging-port=0 --remote-debugging-address=127.0.0.1');
 });
 
 test('sidebar reports repaired shortcuts separately from directories it could not check', windowsOnly, async t => {
@@ -171,7 +172,7 @@ test('sidebar reports repaired shortcuts separately from directories it could no
   try {
     assert.equal(await manager.checkShortcuts(), 'missing');
     assert.deepEqual(await manager.fixShortcuts(), { ok: false, reason: 'partial', updated: 1, failed: 0, total: 1, shortcutState: 'unknown' });
-    assert.equal(readArgs(writable), '--keep --remote-debugging-port=0');
+    assert.equal(readArgs(writable), '--keep --remote-debugging-port=0 --remote-debugging-address=127.0.0.1');
     assert.equal(manager.info().canFixShortcut, false);
     assert.deepEqual(await manager.fixShortcuts(), { ok: false, reason: 'partial', updated: 0, failed: 0, total: 1, shortcutState: 'unknown' });
 
@@ -292,7 +293,7 @@ test('corrupted or unreadable shortcut files do not double-count earlier Antigra
   try {
     assert.equal(await manager.checkShortcuts(), 'missing');
     assert.deepEqual(await manager.fixShortcuts(), { ok: true, reason: 'ok', updated: 1, failed: 0, total: 1, shortcutState: 'ok' });
-    assert.equal(readArgs(valid), '--remote-debugging-port=0');
+    assert.equal(readArgs(valid), '--remote-debugging-port=0 --remote-debugging-address=127.0.0.1');
   } finally {
     execFileSync('icacls.exe', [unreadable, '/remove:d', sid]);
   }

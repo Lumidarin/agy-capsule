@@ -19,6 +19,11 @@ $ErrorActionPreference = 'Stop'
 $switchName = '--remote-debugging-port'
 $switchText = "$switchName=0"
 $switchPattern = "(^|\s)$([regex]::Escape($switchName))(=\S*)?(?=\s|$)"
+# Also pin the debug port to loopback. A user's own --remote-debugging-address is never replaced.
+$addressName = '--remote-debugging-address'
+$addressText = "$addressName=127.0.0.1"
+$addressAnyPattern = "(^|\s)$([regex]::Escape($addressName))(=|\s|$)"
+$addressOwnPattern = "(^|\s)$([regex]::Escape($addressText))(?=\s|$)"
 $shell = New-Object -ComObject WScript.Shell
 
 # Messages are collected per language and printed as an [English] block, then a [中文] block.
@@ -78,10 +83,11 @@ foreach ($shortcut in $shortcuts) {
     $arguments = [string]$shortcut.Link.Arguments
     if ($Undo) {
         if (-not $shortcut.HasSwitch) { Say "Unchanged (no switch): $($shortcut.Path)" "未带参数，无需改动：$($shortcut.Path)"; continue }
-        $next = ($arguments -replace $switchPattern, '').Trim()
+        $next = (($arguments -replace $switchPattern, '') -replace $addressOwnPattern, '').Trim()
     } else {
         if ($shortcut.HasSwitch) { Say "Already set: $($shortcut.Path)" "已设置：$($shortcut.Path)"; continue }
-        $next = "$arguments $switchText".Trim()
+        $address = if ($arguments -match $addressAnyPattern) { '' } else { " $addressText" }
+        $next = "$arguments $switchText$address".Trim()
     }
     try {
         $shortcut.Link.Arguments = $next

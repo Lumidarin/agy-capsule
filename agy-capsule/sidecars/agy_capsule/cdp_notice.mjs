@@ -41,7 +41,9 @@ foreach ($f in $files) {
     $total++
     $arguments = [string]$l.Arguments
     if ($arguments -match $pattern) { continue }
-    $expected = "$arguments --remote-debugging-port=0".Trim()
+    # Pin the debug port to loopback too, unless the user already chose an address.
+    $address = if ($arguments -match '(^|\\s)--remote-debugging-address(=|\\s|$)') { '' } else { ' --remote-debugging-address=127.0.0.1' }
+    $expected = "$arguments --remote-debugging-port=0$address".Trim()
     try {
       $l.Arguments = $expected
       # WScript.Shell can silently truncate long arguments. Keep the original file in that case.

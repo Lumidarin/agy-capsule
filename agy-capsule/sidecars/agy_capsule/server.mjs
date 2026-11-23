@@ -10,6 +10,7 @@ import { summarizeGeneration, summarizeSubagentTurnSpeed, summarizeTurnSpeed, su
 import { classifyRequestError } from './errors.mjs';
 import { createSqliteSnapshotCache } from './sqlite_cache.mjs';
 import { startLsWatchdog } from './ls_watchdog.mjs';
+import { loopbackFetch } from './loopback_fetch.mjs';
 import { startSelfReloadWatcher } from './reload.mjs';
 import { summarizeSubagentExecution, summarizeSubagentTurnMetrics, summarizeTurnMetrics } from './turn_metrics.mjs';
 import { installAsyncHostRoutes, installEpipeGuard } from './host_bridge.mjs';
@@ -72,7 +73,7 @@ async function loadQuota() {
   const lsAddr = process.env.ANTIGRAVITY_LS_ADDRESS;
   const csrf = process.env.ANTIGRAVITY_CSRF_TOKEN;
   if (!lsAddr || !csrf) return cachedQuota || NO_QUOTA;
-  const request = method => fetch(`http://${lsAddr}/exa.language_server_pb.LanguageServerService/${method}`, {
+  const request = method => loopbackFetch(`http://${lsAddr}/exa.language_server_pb.LanguageServerService/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-codeium-csrf-token': csrf },
     body: '{}',

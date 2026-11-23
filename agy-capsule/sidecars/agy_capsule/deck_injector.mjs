@@ -1,6 +1,7 @@
 // Deck injector: mounts a compact metrics strip into the Antigravity composer
 // footer (next to the model selector) via the local DevTools (CDP) endpoint.
 import { readFileSync } from 'node:fs';
+import { loopbackFetch } from './loopback_fetch.mjs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -939,8 +940,11 @@ function pageMount(d, childAnchor = null) {
     else window.__agyCapsuleCleanup = root._dispose;
 
     const groups = [...root.querySelectorAll('.dk-grp')];
-    const overlays = childSidebar ? groups.map(grp => grp.querySelector('.dk-pop')) : [];
-    for (const pop of overlays) pop.popover = 'manual';
+    const overlays = groups.map(grp => grp.querySelector('.dk-pop')).filter(Boolean);
+    const useTopLayer = overlays.length > 0 && overlays.every(pop => typeof pop.showPopover === 'function');
+    if (useTopLayer) {
+      for (const pop of overlays) pop.popover = 'manual';
+    }
     const closePinned = root._closePinned = (dismiss = false) => {
       const pinned = root._pinnedGroup;
       if (pinned) {
@@ -948,7 +952,7 @@ function pageMount(d, childAnchor = null) {
         if (dismiss) pinned.dataset.dismissed = 'true';
         pinned.querySelector('.dk-pill').setAttribute('aria-expanded', 'false');
         const pop = pinned.querySelector('.dk-pop');
-        if (pop.matches(':popover-open')) pop.hidePopover();
+        if (useTopLayer && pop.matches(':popover-open')) pop.hidePopover();
       }
       root._pinnedGroup = null;
       root.removeAttribute('data-pinned');
@@ -956,10 +960,13 @@ function pageMount(d, childAnchor = null) {
     root._layoutPopovers = (grp = root._pinnedGroup || root.querySelector('.dk-grp:hover')) => {
       const pop = grp && !grp.hidden && !grp.dataset.dismissed && !root.classList.contains('dk-hide-all')
         ? grp.querySelector('.dk-pop') : null;
-      // A sidebar strip sits in its own stacking context below the native
-      // composer. Only its panel needs to escape into the browser's top layer.
-      for (const overlay of overlays) {
-        if (overlay !== pop && overlay.matches(':popover-open')) overlay.hidePopover();
+      // Composer strips can sit in a stacking context below sibling overlays
+      // such as the native Queued Messages tray or sidebar composer. Promote
+      // the open panel into the browser's top layer so it renders above them.
+      if (useTopLayer) {
+        for (const overlay of overlays) {
+          if (overlay !== pop && overlay.matches(':popover-open')) overlay.hidePopover();
+        }
       }
       if (!pop && root.dataset.panelLayout !== 'matched') {
         root._fitPanelHeights?.();
@@ -979,7 +986,7 @@ function pageMount(d, childAnchor = null) {
       const limit = `${Math.max(0, maxRight - minLeft)}px`;
       if (root.style.getPropertyValue('--dk-pop-max-width') !== limit) root.style.setProperty('--dk-pop-max-width', limit);
       root._fitPanelHeights?.();
-      if (pop && childSidebar && !pop.matches(':popover-open')) pop.showPopover();
+      if (pop && useTopLayer && !pop.matches(':popover-open')) pop.showPopover();
       const width = pop?.getBoundingClientRect().width;
       if (!width) return;
       const pill = grp.querySelector('.dk-pill').getBoundingClientRect();
@@ -987,8 +994,8 @@ function pageMount(d, childAnchor = null) {
       const stripLeft = (firstGrp || root).getBoundingClientRect().left;
       let left = Math.max(stripLeft, pill.right - width);
       left = Math.max(minLeft, Math.min(left, maxRight - width));
-      pop.style.left = (childSidebar ? left : left - grp.getBoundingClientRect().left) + 'px';
-      if (childSidebar) pop.style.bottom = (innerHeight - pill.top + 8) + 'px';
+      pop.style.left = (useTopLayer ? left : left - grp.getBoundingClientRect().left) + 'px';
+      if (useTopLayer) pop.style.bottom = (innerHeight - pill.top + 8) + 'px';
     };
     for (const grp of groups) {
       grp.addEventListener('mouseenter', () => {
@@ -1003,8 +1010,9 @@ function pageMount(d, childAnchor = null) {
         grp.querySelector('.dk-pill').setAttribute('aria-expanded', 'false');
         const pop = grp.querySelector('.dk-pop');
         if (pop) {
-          if (pop.matches(':popover-open')) pop.hidePopover();
+          if (useTopLayer && pop.matches(':popover-open')) pop.hidePopover();
           pop.style.left = '';
+          pop.style.bottom = '';
         }
       });
       grp.querySelector('.dk-pill').addEventListener('click', (event) => {
@@ -1926,7 +1934,7 @@ export function createComposerOriginResolver(productRoots = [], env = process.en
       // The hub and the sidecar use distinct credentials. Ask the LS itself;
       // never send the sidecar credential to a redirected or non-loopback URL.
       try {
-        const res = await fetch('http://' + match[1] + ':' + match[2] + '/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary', {
+        const res = await loopbackFetch('http://' + match[1] + ':' + match[2] + '/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary', {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'x-codeium-csrf-token': token },
           body: '{}', redirect: 'error', signal: AbortSignal.timeout(3000),
         });
@@ -2026,7 +2034,7 @@ export function startDeckInjector(inspect, options = {}) {
     catch { discovery = 'missing'; logOnce('DevToolsActivePort not found'); return []; }
     try {
       if (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new Error('invalid CDP port');
-      const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(3000), redirect: 'error' });
+      const response = await loopbackFetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(3000), redirect: 'error' });
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const targets = await response.json();
       const origin = await composerOrigin();

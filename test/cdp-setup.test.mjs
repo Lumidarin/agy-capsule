@@ -29,7 +29,7 @@ test('injector reports whether the debugging port is missing, unreachable or ok'
   await injector.tick();
   assert.equal(injector.status(), 'missing');
 
-  writeFileSync(portFile, '9\n/devtools/browser/x\n');
+  writeFileSync(portFile, '9222\n/devtools/browser/x\n');
   globalThis.fetch = async () => { throw new Error('connect ECONNREFUSED'); };
   await injector.tick();
   assert.equal(injector.status(), 'unreachable');

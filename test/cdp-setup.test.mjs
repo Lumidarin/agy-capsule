@@ -228,6 +228,8 @@ test('enable-cdp.ps1 adds and removes the switch only on Antigravity shortcuts',
   make(plain, exe, '');
   make(withArgs, exe, '--disable-gpu');
   make(other, join(appDir, 'Uninstall Antigravity.exe'), '');
+  const custom = join(startMenu, 'Antigravity Custom.lnk');
+  make(custom, exe, '--remote-debugging-address=0.0.0.0');
 
   const script = fileURLToPath(new URL('../scripts/enable-cdp.ps1', import.meta.url));
   const run = (...extra) => {
@@ -238,14 +240,16 @@ test('enable-cdp.ps1 adds and removes the switch only on Antigravity shortcuts',
   // install.bat path: without an interactive yes nothing changes, and the install still succeeds.
   assert.match(run('-Ask'), /Not interactive, skipped/);
   assert.equal(args(plain), '');
-  run();
-  assert.equal(args(plain), '--remote-debugging-port=0');
+  assert.match(run(), /Skipped .*non-loopback/);
+  assert.equal(args(plain), '--remote-debugging-port=0 --remote-debugging-address=127.0.0.1');
   assert.equal(run('-Ask').trim(), '', 'no prompt once every shortcut has the switch');
-  assert.equal(args(withArgs), '--disable-gpu --remote-debugging-port=0');
+  assert.equal(args(withArgs), '--disable-gpu --remote-debugging-port=0 --remote-debugging-address=127.0.0.1');
   assert.equal(args(other), '');
+  assert.equal(args(custom), '--remote-debugging-address=0.0.0.0', 'a non-loopback address is left alone and no debug port is switched on next to it');
   assert.match(run(), /Already set/);
-  assert.equal(args(plain), '--remote-debugging-port=0', 'running twice must not duplicate the switch');
+  assert.equal(args(plain), '--remote-debugging-port=0 --remote-debugging-address=127.0.0.1', 'running twice must not duplicate the switch');
   run('-Undo');
   assert.equal(args(plain), '');
   assert.equal(args(withArgs), '--disable-gpu');
+  assert.equal(args(custom), '--remote-debugging-address=0.0.0.0', 'undo never touches an address the user chose');
 });

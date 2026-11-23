@@ -1,6 +1,7 @@
 // Deck injector: mounts a compact metrics strip into the Antigravity composer
 // footer (next to the model selector) via the local DevTools (CDP) endpoint.
 import { readFileSync } from 'node:fs';
+import { loopbackFetch } from './loopback_fetch.mjs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -1857,7 +1858,7 @@ export function createComposerOriginResolver(productRoots = [], env = process.en
       // The hub and the sidecar use distinct credentials. Ask the LS itself;
       // never send the sidecar credential to a redirected or non-loopback URL.
       try {
-        const res = await fetch('http://' + match[1] + ':' + match[2] + '/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary', {
+        const res = await loopbackFetch('http://' + match[1] + ':' + match[2] + '/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary', {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'x-codeium-csrf-token': token },
           body: '{}', redirect: 'error', signal: AbortSignal.timeout(3000),
         });
@@ -1957,7 +1958,7 @@ export function startDeckInjector(inspect, options = {}) {
     catch { discovery = 'missing'; logOnce('DevToolsActivePort not found'); return []; }
     try {
       if (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new Error('invalid CDP port');
-      const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(3000), redirect: 'error' });
+      const response = await loopbackFetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(3000), redirect: 'error' });
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const targets = await response.json();
       const origin = await composerOrigin();

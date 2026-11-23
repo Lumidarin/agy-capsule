@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
+import { loopbackFetch } from './loopback_fetch.mjs';
 
 const exec = promisify(execFile);
 const procOptions = { encoding: 'utf8', timeout: 3000, windowsHide: true, maxBuffer: 32 * 1024 };
@@ -99,7 +100,7 @@ export function connectionFailed(error, seen = new Set()) {
   return connectionFailed(error.cause, seen);
 }
 
-export function startLsWatchdog(address, shutdown, { fetchImpl = fetch, schedule = setInterval, cancel = clearInterval,
+export function startLsWatchdog(address, shutdown, { fetchImpl = loopbackFetch, schedule = setInterval, cancel = clearInterval,
   now = () => performance.now(), ownerProbe = /^(127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(address) ? createOwnerProbe() : () => 'unbound' } = {}) {
   if (!address) return () => {};
   // Capture at launch, even if the owner disappears before the first interval.

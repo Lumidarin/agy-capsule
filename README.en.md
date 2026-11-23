@@ -4,6 +4,8 @@
 
 Context usage, multi-model quotas, cache status and generation speed in the Antigravity composer footer. Hover a capsule to see its panel; click it to pin the panel open.
 
+Using the **standalone Antigravity IDE**? Install `agy-capsule-ide` from the IDE's Extensions view, or find it on [Open VSX](https://open-vsx.org/extension/lumidarin/agy-capsule-ide/). See the [IDE extension guide](./ide/README.md) for its composer capsules, installation and supported features. The rest of this page describes the desktop App.
+
 <p align="center">
   <img src="assets/readme/hero.gif" width="100%" alt="Hovering the context, quota and request-failure capsules in turn to open their panels" />
 </p>

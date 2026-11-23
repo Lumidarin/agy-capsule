@@ -1513,3 +1513,85 @@ await test('Opt-in effort bar animates and switches models in place; default pic
   await claude.click();
   assert.equal(await panel.isVisible(), false, 'the default picker still closes after selecting a model');
 });
+
+await test('IDE composer shows real quota windows and only shows the third capsule for alerts', async t => {
+  const browser = await chromium.launch(launch);
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1000, height: 600 } });
+  await page.setContent('<div data-testid="conversation-view"><div class="agy-composer-footer"><div><button data-testid="model-selector-trigger">Gemini</button></div></div></div>');
+  await page.evaluate(() => {
+    document.querySelector('button').__reactFiber$fixture = { dependencies: { firstContext: { memoizedValue: {
+      async retrieveUserQuotaSummary() {
+        return { response: { groups: [{ displayName: 'Gemini Models', buckets: [
+          { window: '5h', remaining: { case: 'remainingFraction', value: .95 }, resetTime: { seconds: 1900000000n } },
+          { window: 'weekly', remaining: { case: 'remainingFraction', value: 0 } },
+        ] }, { displayName: 'Disabled or missing', buckets: [
+          { window: '5h', remaining: { case: 'remainingFraction', value: 1 }, disabled: true },
+          { window: 'weekly', remaining: {} },
+        ] }] } };
+      },
+    } } } };
+  });
+  await page.evaluate(buildRuntimeBundle(owner).code);
+  const data = { ...snapshot(), useComposerQuota: true, quotaGroups: [] };
+  await apply(page, data);
+  const quota = page.locator('[data-el="grpQuota"]');
+  await quota.locator('[data-k="pill5h"]').filter({ hasText: '95%' }).waitFor({ state: 'visible' });
+  assert.equal(await quota.locator('[data-k="pillWk"]').innerText(), '0%');
+  assert.equal(await quota.locator('.dk-q-group').count(), 2);
+  const disabled = quota.locator('.dk-q-group').last();
+  assert.equal(await disabled.locator('.dk-q-row').count(), 1, 'a reported disabled window is distinct from a missing one');
+  assert.equal((await disabled.locator('.dk-q-right').textContent()).trim(), '100%', 'show the reported percentage without a disabled label');
+  const alert = page.locator('[data-el="grpError"]');
+  assert.equal(await alert.isVisible(), false, '0% is quota information, not a failed request');
+  await apply(page, { ...data, turnQueue: { waits: [41], turnTerminal: true } });
+  assert.equal(await alert.getAttribute('data-alert-mode'), 'queue');
+  assert.equal(await alert.isVisible(), true);
+  await apply(page, { ...data, requestError: { kind: 'rate_limited', diagnostic: '429' } });
+  assert.equal(await alert.getAttribute('data-alert-mode'), 'error');
+  assert.equal(await alert.isVisible(), true);
+  await apply(page, data);
+  // The pill collapses after its exit animation.
+  await alert.waitFor({ state: 'hidden', timeout: 3000 });
+});
+
+await test('IDE keeps dated quota on read failure, recovers, and honors expiry and explicit empty results', async t => {
+  const browser = await chromium.launch(launch);
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent('<div data-testid="conversation-view"><div class="agy-composer-footer"><div><button data-testid="model-selector-trigger">Gemini</button></div></div></div>');
+  await page.evaluate(() => {
+    window.clock = Date.now(); Date.now = () => window.clock;
+    window.quotaMode = 'ok';
+    document.querySelector('button').__reactFiber$fixture = { memoizedProps: { value: {
+      async retrieveUserQuotaSummary() {
+        if (window.quotaMode === 'fail') throw Error('transient');
+        if (window.quotaMode === 'malformed') return {};
+        return { groups: window.quotaMode === 'empty' ? [] : [{ displayName: 'Gemini Models', buckets: [
+          { window: '5h', remainingFraction: window.quotaMode === 'ok' ? .88 : .64 },
+          { window: 'weekly', remainingFraction: 0 },
+        ] }] };
+      },
+    } } };
+  });
+  await page.evaluate(buildRuntimeBundle(owner).code);
+  const data = { ...snapshot(), useComposerQuota: true, quotaGroups: [] };
+  const quota = page.locator('[data-el="grpQuota"]');
+  const sample = async (mode, delta) => {
+    await page.evaluate(([m,n]) => { window.quotaMode = m; window.clock += n; }, [mode, delta]);
+    await apply(page, data); await apply(page, data);
+  };
+  await sample('ok', 0);
+  assert.equal(await quota.locator('[data-k="pill5h"]').innerText(), '88%');
+  for (const mode of ['fail','malformed']) {
+    await sample(mode, 16_000);
+    assert.equal(await quota.locator('[data-k="pillWk"]').innerText(), '0%');
+    assert.match(await quota.locator('.dk-pill').getAttribute('aria-label'), /Last updated/);
+  }
+  await sample('recovered', 16_000);
+  assert.equal(await quota.locator('[data-k="pill5h"]').innerText(), '64%');
+  assert.doesNotMatch(await quota.locator('.dk-pill').getAttribute('aria-label'), /Last updated/);
+  await sample('fail', 120_001); assert.equal(await quota.isVisible(), false);
+  await sample('ok', 16_000); assert.equal(await quota.isVisible(), true);
+  await sample('empty', 16_000); assert.equal(await quota.isVisible(), false);
+});

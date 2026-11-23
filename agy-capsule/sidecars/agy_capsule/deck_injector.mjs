@@ -12,7 +12,7 @@ import { createUpstreamEffort } from './effort_upstream.mjs';
 import { readCloudTrajectory } from './cloud_telemetry.mjs';
 import { createPresentation, getPresentationScript } from './ui.mjs';
 
-const { escapeHtml, appearance, cacheView, contextBreakdown, quotaView, makeRingSvg } = createPresentation();
+const { escapeHtml, appearance, cacheView, contextBreakdown, quotaView, quotaStaleNote, makeRingSvg } = createPresentation();
 
 const INTERVAL_MS = 1000;
 const INSTANCE_TS = Date.now();
@@ -172,11 +172,11 @@ function pageMount(d, childAnchor = null) {
   if (host.getAttribute('translate') !== 'no') host.setAttribute('translate', 'no');
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '139') {
+  if (root.getAttribute('data-deck-ver') !== '142') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '139');
+    root.setAttribute('data-deck-ver', '142');
     root._speedActivity = null;
     root._motionPrev = null;
     root.style.cssText = [
@@ -358,6 +358,7 @@ function pageMount(d, childAnchor = null) {
         #deck-metrics-strip .dk-grp[data-pinned="true"] .dk-svg {
           color: var(--foreground, #0a0a0c);
         }
+        #deck-metrics-strip .dk-pill-quota[data-stale] { opacity: .7; }
         #deck-metrics-strip .dk-pill-quota {
           gap: 10px;
         }
@@ -1097,7 +1098,7 @@ function pageMount(d, childAnchor = null) {
   presentation.renderContextTooltips(root, d.contextData, labels);
   const now = Date.now();
   const alerts = presentation.renderAlerts(root, { ...d.contextData, requestError: d.requestError, turnQueue: d.turnQueue }, d.prefs, labels, now, cancelBtnVisible || !!d.turnQueue?.hasPendingPlanner);
-  root.querySelector('[data-el="grpQuota"]').hidden = (!!childAnchor && !sideFooter) || d.cloudPaygo;
+  root.querySelector('[data-el="grpQuota"]').hidden = (!!childAnchor && !sideFooter) || d.cloudPaygo || d.hideQuota;
   if (childAnchor) host.hidden = !alerts.visible && childContext.hidden && !showPillSpeed && root.querySelector('[data-el="childModel"]').hidden
     && root.querySelector('[data-el="grpQuota"]').hidden;
   if (childAnchor) host.style.display = host.hidden ? 'none' : sideFooter ? 'contents' : 'block';
@@ -1136,7 +1137,9 @@ function pageMount(d, childAnchor = null) {
     pillSpeed.removeAttribute('data-tier');
   }
   for (const node of [contextPill, ...contextPill.querySelectorAll('[title]')]) node.removeAttribute('title');
-  root.querySelector('[data-el="grpQuota"] .dk-pill').setAttribute('aria-label', labels.quota);
+  const quotaPill = root.querySelector('[data-el="grpQuota"] .dk-pill');
+  quotaPill.setAttribute('aria-label', [labels.quota, d.staleNote].filter(Boolean).join(' · '));
+  quotaPill.toggleAttribute('data-stale', !!d.staleNote);
 
   const setK = (k, val) => {
     const el = root.querySelector(`[data-k="${k}"]`);
@@ -1613,6 +1616,8 @@ function toView(d) {
   const quotaSummaryGroups = quotaGroups.map(({ title, rawName, modelsInGroup, q5h, qWk }) => ({ title, rawName, modelsInGroup, q5h, qWk }));
   const useBar = appearance(d.prefs).quotaIndicator === 'bar';
   let quotaHtml = '<div class="dk-panel-content">';
+  const staleNote = quotaStaleNote(d.quotaStaleAt, d.prefs);
+  if (staleNote) quotaHtml += '<small>' + escapeHtml(staleNote) + '</small>';
   for (const g of quotaGroups) {
     quotaHtml += '<div class="dk-q-group" data-pool="' + escapeHtml(g.rawName) + '">';
     quotaHtml += '<div class="dk-q-title">' + escapeHtml(g.title) + '<span class="dk-q-active" style="color:' + g.activeColor + '" aria-hidden="true"></span></div>';
@@ -1642,6 +1647,7 @@ function toView(d) {
     turnMetrics: d.turnMetrics || null,
     requestError: d.requestError || { kind: 'none' },
     cloudPaygo: d.cloudPaygo === true,
+    hideQuota: d.hideQuota === true,
     cache: { contextTokens: d.contextTokens, cachedIn: d.cachedIn, lastStepEpochMs: d.lastStepEpochMs || 0 },
     contextData: { contextTokens: d.contextTokens, maxContextTokens: d.maxContextTokens, cachedIn: d.cachedIn, uncachedIn: d.uncachedIn, turn0Tokens: d.turn0Tokens, totalOutputTokens: d.totalOutputTokens, totalThinkingTokens: d.totalThinkingTokens, contextEstimate: d.contextEstimate },
     pillCtx: ctx.usedPct,
@@ -1675,9 +1681,59 @@ function toView(d) {
     valThink: ctx.thinkPct + ' · ' + ctx.thinkK,
     valTurn0: ctx.turn0Pct + ' · ' + ctx.turn0K,
     quotaSummaryGroups,
-    quotaHtml,
+    staleNote, quotaHtml,
     instanceTs: INSTANCE_TS,
   };
+}
+
+// The IDE's model selector already has an authenticated quota client. Keep
+// that client in its own renderer and retain only the displayed quota fields.
+export function createQuotaSnapshot(now = Date.now) {
+  let last = null;
+  return {
+    observe(sample) {
+      if (sample && Array.isArray(sample.groups) && Number.isFinite(sample.at)) {
+        last = sample; // An authoritative empty list clears any former paid quotas.
+      } else if (last) last = { ...last, stale: true };
+    },
+    read() {
+      if (!last || now() - last.at >= 120_000) { last = null; return null; }
+      return now() - last.at >= 30_000 ? { ...last, stale: true } : last;
+    },
+  };
+}
+
+export async function readComposerQuota(footer) {
+  const button = footer.querySelector('button[data-testid="model-selector-trigger"]');
+  const key = button && Object.keys(button).find(k => k.startsWith('__reactFiber$'));
+  let client;
+  for (let f = key && button[key]; f && !client; f = f.return) {
+    const props = f.memoizedProps;
+    const candidates = [props?.value, props];
+    for (let dep = f.dependencies?.firstContext; dep; dep = dep.next) candidates.push(dep.memoizedValue);
+    client = candidates.find(v => typeof v?.retrieveUserQuotaSummary === 'function');
+  }
+  if (!client) return null;
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('quota timeout')), 6000); });
+  let reply;
+  try { reply = await Promise.race([client.retrieveUserQuotaSummary(), timeout]); }
+  finally { clearTimeout(timer); }
+  const groups = reply?.response?.groups ?? reply?.groups;
+  if (!Array.isArray(groups)) return null;
+  const measured = groups.flatMap(g => {
+    const buckets = (g.buckets || []).flatMap(b => {
+      if (!['5h', 'weekly'].includes(b.window)) return [];
+      const fraction = b.remaining?.case === 'remainingFraction' ? b.remaining.value : b.remainingFraction;
+      if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1) return [];
+      const seconds = Number(b.resetTime?.seconds);
+      const ms = typeof b.resetTime === 'string' ? Date.parse(b.resetTime) : seconds * 1000;
+      return [{ window: b.window, displayName: b.displayName, remainingFraction: fraction,
+        resetTime: ms > 0 && ms < 4e12 ? new Date(ms).toISOString() : undefined }];
+    });
+    return buckets.length ? [{ displayName: g.displayName, description: g.description, buckets }] : [];
+  });
+  return groups.length && !measured.length ? null : measured;
 }
 
 // Installed once in each renderer. Clocks/layout keep updating without a CDP
@@ -1694,6 +1750,8 @@ function installRuntime(owner, hash) {
   let dataId = '';
   let mainView = null;
   let mainObserver;
+  const quotas = createQuotaSnapshot();
+  let nextQuotaRead = 0, readingQuota = false;
   let disposed = false;
   const children = new Map();
   const childHosts = new Map();
@@ -1734,7 +1792,17 @@ function installRuntime(owner, hash) {
       }
     }
     if (!footer || !data || data.subagent) window.__agyCapsuleCleanup?.();
-    else if (render) pageMount(toView(data));
+    else if (render) {
+      if (data.useComposerQuota && !readingQuota && Date.now() >= nextQuotaRead) {
+        readingQuota = true;
+        const billingMode = readBillingMode?.(footer) || 'unknown';
+        readComposerQuota(footer).then(groups => quotas.observe(groups && { groups, at: Date.now(), billingMode }), () => quotas.observe(null))
+          .finally(() => { readingQuota = false; nextQuotaRead = Date.now() + 15_000; });
+      }
+      const sample = data.useComposerQuota && quotas.read();
+      pageMount(toView(data.useComposerQuota ? { ...data, quotaGroups: sample?.groups ?? [],
+        quotaStaleAt: sample?.stale ? sample.at : null, hideQuota: !sample?.groups.length } : data));
+    }
     if (render) for (const [anchor, id] of snapshots) {
       const next = id === null ? data : children.get(id);
       const entry = childHosts.get(anchor);
@@ -1783,6 +1851,7 @@ function installRuntime(owner, hash) {
       let effortSync = null;
       try { effortSync = effortEffects().readPendingPatch(); } catch {}
       return { owner, hash, path: location.pathname, hasFooter: !!footer, modelConversationId, modelFamilies, effortSync, contextEstimate,
+        ...(opts?.includeQuota && { quotaSnapshot: quotas.read() }),
         conversationId, loadedMain: !!data, hasKnownChildAnchor, subagentIds: [...ids], sideIds, loadedSubagentIds: [...children.keys()] };
     },
     ackEffortSync(caller, rev) {
@@ -1832,12 +1901,12 @@ function installRuntime(owner, hash) {
   return true;
 }
 
-export function buildRuntimeBundle(owner = INSTANCE_TS) {
-  const functions = [toView, findFooterLeft, conversationIdOf, readCompactionEstimate, findSubagentAnchors, resolveInheritedLabel, readPickerState, createMotionThemes, motionThemes, createUpstreamEffort, effortEffects, mountEffortBar, mountOrchestratorSwitch, syncModelPicker, readCloudTrajectory, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
+export function buildRuntimeBundle(owner = INSTANCE_TS, readBilling) {
+  const functions = [toView, findFooterLeft, conversationIdOf, readCompactionEstimate, findSubagentAnchors, resolveInheritedLabel, readPickerState, createMotionThemes, motionThemes, createUpstreamEffort, effortEffects, mountEffortBar, mountOrchestratorSwitch, syncModelPicker, readCloudTrajectory, createQuotaSnapshot, readComposerQuota, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
   const effortBar = `const EFFORT_BAR_CSS=${JSON.stringify(EFFORT_BAR_CSS)};`;
-  const source = getPresentationScript() + '\n' + effortBar + '\n' + functions;
+  const source = getPresentationScript() + '\n' + effortBar + '\nconst readBillingMode=' + (readBilling?.toString() || 'null') + ';\n' + functions;
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
-  const code = `(()=>{const INSTANCE_TS=${Number(owner)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${source}\nconst {escapeHtml,appearance,cacheView,contextBreakdown,quotaView,makeRingSvg}=globalThis.__agyCapsulePresentation;\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;
+  const code = `(()=>{const INSTANCE_TS=${Number(owner)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${source}\nconst {escapeHtml,appearance,cacheView,contextBreakdown,quotaView,quotaStaleNote,makeRingSvg}=globalThis.__agyCapsulePresentation;\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;
   return { code, hash };
 }
 
@@ -1883,7 +1952,7 @@ export function createComposerOriginResolver(productRoots = [], env = process.en
 
 export function startDeckInjector(inspect, options = {}) {
   const owner = options.instanceTs ?? INSTANCE_TS;
-  const bundle = buildRuntimeBundle(owner);
+  const bundle = buildRuntimeBundle(owner, options.readBillingMode);
   const sockets = new Map();
   let cachedPages = [];
   let lastListAt = 0;
@@ -1896,7 +1965,7 @@ export function startDeckInjector(inspect, options = {}) {
   let availableEstimates = new Map();
   let discovery = 'unknown', noAnchorSince = null, failedRounds = 0;
   const now = options.now || Date.now;
-  const composerOrigin = createComposerOriginResolver(options.productRoots, options.env, now);
+  const composerOrigin = options.composerOrigin ?? createComposerOriginResolver(options.productRoots, options.env, now);
   const logOnce = message => {
     if (lastErr !== message) { lastErr = message; console.error('[deck]', message); }
   };
@@ -1971,10 +2040,11 @@ export function startDeckInjector(inspect, options = {}) {
       const origin = await composerOrigin();
       const wsOrigin = new URL('ws://127.0.0.1:' + Number(port)).origin;
       cachedPages = targets.filter(t => {
-        if (!origin || t?.type !== 'page' || typeof t.id !== 'string' || !t.id || !URL.canParse(t.url) || new URL(t.url).origin !== origin || !URL.canParse(t.webSocketDebuggerUrl)) return false;
+        if (!origin || (options.isComposerTarget ? !options.isComposerTarget(t) : t?.type !== 'page') || typeof t.id !== 'string' || !t.id || !URL.canParse(t.url) || new URL(t.url).origin !== origin || !URL.canParse(t.webSocketDebuggerUrl)) return false;
         const ws = new URL(t.webSocketDebuggerUrl);
         return ws.origin === wsOrigin && ws.pathname === '/devtools/page/' + t.id && !ws.username && !ws.password && !ws.search && !ws.hash;
       });
+      if (options.filterWindowTargets && cachedPages.length) cachedPages = await options.filterWindowTargets(cachedPages, targets, wsOrigin);
       lastListAt = now();
       discovery = origin ? 'ok' : 'unverified';
       if (!origin) logOnce('composer origin not verified for this host session; footer paused');
@@ -2005,14 +2075,15 @@ export function startDeckInjector(inspect, options = {}) {
     const nextEstimates = new Map();
     try {
       const list = await pages();
-      let noAnchor = 0, failed = 0;
+      let noAnchor = 0, failed = 0, mounted = false;
+      let windowQuota = null;
       for (const target of list) {
         if (stopped) break;
         try {
           const entry = sockets.get(target.id) || await connect(target);
           const context = entry.context;
           const run = expression => evaluate(entry, context, expression);
-          const readOpts = JSON.stringify({ sideChat: options.sideChatEnabled?.() === true });
+          const readOpts = JSON.stringify({ sideChat: options.sideChatEnabled?.() === true, ...(options.onQuota && {includeQuota: true}) });
           let state = await run(`globalThis.__agyCapsuleDeck?.readState(${owner},${readOpts})??null`);
           if (state === undefined || stopped) { failed++; continue; }
           if (state === 'superseded') return await supersede();
@@ -2026,6 +2097,10 @@ export function startDeckInjector(inspect, options = {}) {
           }
           if (state === 'superseded') return await supersede();
           if (state?.owner !== owner || !state.path) { failed++; continue; }
+          if (options.onMounted && state.hasFooter && state.loadedMain && !mounted) {
+            mounted = await run(`!!document.getElementById('agy-capsule-host')?.shadowRoot?.querySelector('[data-el="grpCtx"] button')?.getClientRects().length`) === true;
+          }
+          if (state.quotaSnapshot && state.hasFooter) windowQuota = state.quotaSnapshot;
           if (state.effortSync?.patch && typeof state.effortSync.patch === 'object') {
             try { options.onEffortSettingsPatch?.(state.effortSync.patch); } catch {}
             const acked = await run(`globalThis.__agyCapsuleDeck?.ackEffortSync(${owner},${Number(state.effortSync.rev) || 0})??false`);
@@ -2097,6 +2172,8 @@ export function startDeckInjector(inspect, options = {}) {
       cdpState = discovery !== 'ok' ? discovery : failedRounds >= 3 ? 'inject-failed'
         : noAnchorSince !== null && now() - noAnchorSince >= 60_000 ? 'no-anchor' : 'ok';
       options.onStatus?.(cdpState);
+      options.onMounted?.(mounted);
+      options.onQuota?.(windowQuota);
     } finally {
       if (!stopped) {
         availableModels = nextModels;

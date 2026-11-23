@@ -1,0 +1,109 @@
+{
+  "name": "agy-capsule-ide",
+  "displayName": "agy-capsule",
+  "description": "Conversation telemetry and model quota in the Antigravity IDE chat composer.",
+  "publisher": "lumidarin",
+  "version": "0.2.3",
+  "icon": "ide/logo.png",
+  "license": "MIT",
+  "repository": "https://github.com/Lumidarin/agy-capsule",
+  "engines": {
+    "vscode": "^1.107.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./ide/extension.cjs",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agyCapsule.details",
+        "title": "agy-capsule: Show Details"
+      },
+      {
+        "command": "agyCapsule.select",
+        "title": "agy-capsule: Select Conversation",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "agyCapsule.checkUpdates",
+        "title": "agy-capsule: Check for Plugin Updates on Open VSX"
+      },
+      {
+        "command": "agyCapsule.installVsix",
+        "title": "agy-capsule: Install a VSIX…"
+      },
+      {
+        "command": "agyCapsule.repairShortcut",
+        "title": "agy-capsule: Repair IDE Launch Shortcuts (Windows)"
+      },
+      {
+        "command": "agyCapsule.refreshCliQuota",
+        "title": "agy-capsule: Refresh CLI Account Quota"
+      }
+    ],
+    "views": {
+      "agyCapsule": [
+        {
+          "id": "agyCapsule.stats",
+          "name": "agy-capsule",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "agyCapsule.select",
+          "when": "view == agyCapsule.stats",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "agy-capsule",
+      "properties": {
+        "agyCapsule.location": {
+          "type": "string",
+          "enum": [
+            "composer",
+            "statusBar"
+          ],
+          "default": "composer",
+          "description": "Composer only (no status bar flash or fallback), or explicitly use only the status bar."
+        },
+        "agyCapsule.showSpeed": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the latest measured generation speed in the capsule."
+        },
+        "agyCapsule.showCacheHit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include the prompt cache hit percentage in the capsule."
+        },
+        "agyCapsule.dataDirectory": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "Absolute product data directory containing conversations/. Blank uses the current host’s default. Read from User settings only."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agyCapsule",
+          "title": "agy-capsule",
+          "icon": "ide/capsule.svg"
+        }
+      ]
+    }
+  }
+}

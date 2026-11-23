@@ -1,6 +1,6 @@
 # Antigravity IDE：预览版与桌面 App 有什么不同？
 
-适用版本：Standalone IDE 2.8.0，胶囊 IDE 扩展 0.2.1。[下载分支预览包](https://github.com/Lumidarin/agy-capsule/raw/refs/heads/codex/ide-preview/preview/agy-capsule-ide-0.2.1.vsix)，在 IDE 中执行 **Extensions: Install from VSIX…**。如果已经安装同一扩展，安装后按 IDE 提示重载即可。桌面 App 不用安装这个文件。
+适用版本：Standalone IDE 2.8.0。在 IDE 的扩展面板搜索 `agy-capsule-ide` 安装，或从 [Open VSX](https://open-vsx.org/extension/lumidarin/agy-capsule-ide/) 获取。桌面 App 不用安装这个扩展。
 
 ## 五处实现差异
 

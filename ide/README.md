@@ -2,6 +2,10 @@
 
 适用于 **Antigravity IDE（Standalone 独立编辑器）2.8.0**。桌面 App 的安装脚本不安装这个扩展。
 
+**普通用户**：在 IDE 的扩展面板搜索 `agy-capsule-ide` 安装（[Open VSX 页面](https://open-vsx.org/extension/lumidarin/agy-capsule-ide/)），然后跳到第 3 步。
+
+**自行打包**：
+
 1. 从仓库根目录运行 `python scripts/package-ide.py`（打包需要 Node 和 pnpm，使用插件不需要另装它们）。
 2. 用 IDE 的 **Extensions: Install from VSIX…** 选择生成的安装包，或运行：
 

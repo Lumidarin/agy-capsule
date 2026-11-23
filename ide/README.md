@@ -1,4 +1,46 @@
+> 中文请往下划 · Chinese version below
+
 # agy-capsule · Antigravity IDE
+
+For **Antigravity IDE (the Standalone editor) 2.8.0**. The desktop App's install script does not install this extension.
+
+**Most users:** search for `agy-capsule-ide` in the IDE's Extensions view and install it ([Open VSX page](https://open-vsx.org/extension/lumidarin/agy-capsule-ide/)), then continue with step 3.
+
+**Building it yourself:**
+
+1. From the repository root, run `python scripts/package-ide.py` (packaging needs Node and pnpm; using the extension does not).
+2. In the IDE, run **Extensions: Install from VSIX…** and pick the generated package, or run:
+
+   ```powershell
+   & "$env:LOCALAPPDATA\Programs\Antigravity IDE\bin\antigravity-ide.cmd" --install-extension .\dist\agy-capsule-ide-0.2.3.vsix --force
+   ```
+
+3. Quit the IDE completely, then start it once with these arguments (a Windows Start-menu shortcut can keep them too):
+
+   ```powershell
+   & "$env:LOCALAPPDATA\Programs\Antigravity IDE\Antigravity IDE.exe" --remote-debugging-address=127.0.0.1 --remote-debugging-port=0
+   ```
+
+Look at the **bottom edge of the chat composer, next to the model picker**, for context usage and generation speed. Hover for details, click to pin, click again or press Esc to close. A new conversation with no measured values never borrows the previous one's data, and the numbers in the composer always follow their own conversation. The second capsule reads the IDE's native quota panel: the clock is the remaining 5-hour quota and the calendar is the remaining weekly quota. Click it for each quota pool and its reset countdown; windows that do not exist are hidden, and an exhausted one shows 0%. The third, alert capsule stays hidden until a request fails or the wait for the first token passes the threshold. The 5-hour and weekly values show the percentages returned by the host. If reading drops out briefly, the last successful value is kept and its age is shown in the details; it refreshes automatically once reading recovers. A stale value is kept for at most two minutes, and is hidden immediately when the host explicitly returns an empty list.
+
+By default only the **composer capsules** are shown: starting up, reloading, pinning a past conversation or a brief disconnect never makes duplicate readings flash in the window's status bar. The side panel still works without a debugging port. Only an explicit `agyCapsule.location = statusBar` switches to the window status bar. Composer mode only matches the Google chat page of the current window and workspace in the local IDE.
+
+**Open the side panel:** click the capsule icon in the left activity bar, or run **agy-capsule: Show Details**.
+
+- **Stats:** context, cache, the current turn's requests and quota, plus a Token activity heatmap (day/week, on by default) and per-model statistics (day/week/month, pageable).
+- **Settings:** adjust language, layout, alert thresholds, footer display and stats blocks. On first use they are initialized from the desktop preferences and are then saved in the IDE extension's own settings. You can click "Check for plugin updates", "Install VSIX locally" or "Set where conversation records are read", and toggle update reminders. On Windows the IDE launch shortcut can be repaired on demand. Since 0.2.2, a manual check reads Open VSX directly; when a new version is found, click "Update now" instead of downloading from GitHub. If the IDE marketplace index has not caught up yet, the extension fetches the same version from Open VSX, verifies its SHA-256 and hands it to the IDE to install. Update reminders never install or restart anything on their own.
+- **Models:** the enhanced picker and effort slider are on by default. You can restore the native ones, show or hide models, and adjust labels, dots and the slider's look. Listing the selectable models needs a connected composer.
+- **Pinning a past conversation:** **agy-capsule: Select Conversation** only pins the side panel / status bar and never changes the current chat composer. Embedded chat statistics use `~/.gemini/antigravity/conversations`, which also holds the desktop App's records; the older native chat uses `~/.gemini/antigravity-ide/conversations`.
+
+**Quota without a debugging port:** when the native IDE quota is unavailable, the Stats page offers **Read the CLI account's current quota**. Clicking it runs the installed official `agy /usage`; it is not a background poll. The CLI and the IDE may be signed in to different accounts, so the source and read time are shown, and an inactive window with no number is not guessed. If the CLI asks you to sign in or confirm a workspace, the extension does not do it for you. When the native source explicitly returns an empty list and the account is confirmed as Vertex pay-as-you-go, it says plainly that there is no subscription quota pool; a failed read is not evidence of the billing mode.
+
+**Data location and cloud:** set `agyCapsule.dataDirectory` in the IDE user settings to the **absolute path of the product root** that contains `conversations/`, not a single database or project folder. Left unset, it follows the host default. A workspace override of this option is ignored, and the side panel tells a wrong directory, a new session and "no local record yet" apart. A main chat without a local DB tries to read the records already loaded in the page (the composer must be connected); without timing it shows no estimated speed. Cloud fragments are used only for the current conversation: they are not written to the local DB and are not added to Token activity or model history. A WSL/SSH remote database does not automatically become a local data source because of this option.
+
+**Uninstall:** remove **agy-capsule** in the IDE's Extensions view, or run `antigravity-ide --uninstall-extension lumidarin.agy-capsule-ide`. The desktop version is unaffected.
+
+---
+
+# agy-capsule · Antigravity IDE（中文）
 
 适用于 **Antigravity IDE（Standalone 独立编辑器）2.8.0**。桌面 App 的安装脚本不安装这个扩展。
 

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { readPickerState, resolveInheritedLabel, syncModelPicker } from './model_picker.mjs';
+import { AGENT_ENTRY_CSS, readAgentState, renderAgentEntry } from './agent_entry.mjs';
 import { createMotionThemes, motionThemes } from './motion_themes.mjs';
 import { EFFORT_BAR_CSS, effortEffects, mountEffortBar, mountOrchestratorSwitch } from './effort_bar.mjs';
 import { createUpstreamEffort } from './effort_upstream.mjs';
@@ -172,11 +173,11 @@ function pageMount(d, childAnchor = null) {
   if (host.getAttribute('translate') !== 'no') host.setAttribute('translate', 'no');
 
   // Upgrade or initialize DOM structure in-place
-  if (root.getAttribute('data-deck-ver') !== '142') {
+  if (root.getAttribute('data-deck-ver') !== '143') {
     release(root);
     root._pinnedGroup = null;
     root.removeAttribute('data-pinned');
-    root.setAttribute('data-deck-ver', '142');
+    root.setAttribute('data-deck-ver', '143');
     root._speedActivity = null;
     root._motionPrev = null;
     root.style.cssText = [
@@ -250,6 +251,7 @@ function pageMount(d, childAnchor = null) {
         .dk-model-options > :is(.agy-effort, .dk-orch-slot) { contain: inline-size; }
         .dk-model-options > .agy-effort { margin: 5px 0 1px; }
         ${EFFORT_BAR_CSS}
+        ${AGENT_ENTRY_CSS}
         .dk-model-list { display: flex; flex-direction: column; gap: 1px; }
         .dk-model-row,
         .dk-model-sub-item {
@@ -891,6 +893,7 @@ function pageMount(d, childAnchor = null) {
           overflow: hidden; padding: 0 !important; font-size: 0 !important; border-radius: 999px;
         }
         .agy-composer-footer button[data-deck-model-bubble="bubble"] > * { opacity: 0 !important; }
+        [data-deck-agent-tag="on"] [data-testid="selected-agent-chip"] { display: none !important; }
         .agy-composer-footer button[data-deck-model-bubble="bubble"]::after { content: '⋯'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 14px; pointer-events: none; }
         .agy-composer-footer button[data-deck-model-bubble="hidden"] {
           position: absolute !important; width: 0 !important; min-width: 0 !important; max-width: 0 !important;
@@ -1902,8 +1905,8 @@ function installRuntime(owner, hash) {
 }
 
 export function buildRuntimeBundle(owner = INSTANCE_TS, readBilling) {
-  const functions = [toView, findFooterLeft, conversationIdOf, readCompactionEstimate, findSubagentAnchors, resolveInheritedLabel, readPickerState, createMotionThemes, motionThemes, createUpstreamEffort, effortEffects, mountEffortBar, mountOrchestratorSwitch, syncModelPicker, readCloudTrajectory, createQuotaSnapshot, readComposerQuota, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
-  const effortBar = `const EFFORT_BAR_CSS=${JSON.stringify(EFFORT_BAR_CSS)};`;
+  const functions = [toView, findFooterLeft, conversationIdOf, readCompactionEstimate, findSubagentAnchors, resolveInheritedLabel, readPickerState, readAgentState, renderAgentEntry, createMotionThemes, motionThemes, createUpstreamEffort, effortEffects, mountEffortBar, mountOrchestratorSwitch, syncModelPicker, readCloudTrajectory, createQuotaSnapshot, readComposerQuota, pageMount, installRuntime].map(fn => fn.toString()).join('\n');
+  const effortBar = `const EFFORT_BAR_CSS=${JSON.stringify(EFFORT_BAR_CSS)};const AGENT_ENTRY_CSS=${JSON.stringify(AGENT_ENTRY_CSS)};`;
   const source = getPresentationScript() + '\n' + effortBar + '\nconst readBillingMode=' + (readBilling?.toString() || 'null') + ';\n' + functions;
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
   const code = `(()=>{const INSTANCE_TS=${Number(owner)};if(globalThis.__agyCapsuleDeck?.owner>INSTANCE_TS)return 'superseded';${source}\nconst {escapeHtml,appearance,cacheView,contextBreakdown,quotaView,quotaStaleNote,makeRingSvg}=globalThis.__agyCapsulePresentation;\nreturn installRuntime(INSTANCE_TS,${JSON.stringify(hash)});})()`;

@@ -1,5 +1,6 @@
 import { effortEffects, mountEffortBar, mountOrchestratorSwitch } from './effort_bar.mjs';
 import { motionThemes } from './motion_themes.mjs';
+import { readAgentState, renderAgentEntry } from './agent_entry.mjs';
 
 // The desktop host owns the options and the selection. Re-read both from the
 // current button before writing; a retained composer may belong to another chat.
@@ -227,7 +228,12 @@ export function syncModelPicker(root, footer, prefsOrEnabled, labels, findFooter
   if (!enabled && !previous) return;
   const trigger = enabled && footer.querySelector('button[data-testid="model-selector-trigger"]');
   const read = () => {
-    try { return readPickerState(trigger); } catch { return null; }
+    let next;
+    try { next = readPickerState(trigger); } catch { return null; }
+    if (next) {
+      try { next.agents = readAgentState(trigger); } catch { next.agents = null; }
+    }
+    return next;
   };
   const state = trigger && read();
   if (previous && (!state || previous.trigger !== trigger || previous.id !== state.conversationId)) {
@@ -279,7 +285,10 @@ export function syncModelPicker(root, footer, prefsOrEnabled, labels, findFooter
   tip.className = 'dk-model-tip';
   tip.popover = 'manual';
   tip.setAttribute('role', 'tooltip');
-  panel.append(options, orchestratorControl.element, status, sub, tiers, tip);
+  const agentSlot = document.createElement('div');
+  agentSlot.className = 'dk-agent-slot';
+  agentSlot.hidden = true;
+  panel.append(agentSlot, options, orchestratorControl.element, status, sub, tiers, tip);
   root.prepend(button, panel);
   button.popoverTargetElement = panel;
 
@@ -620,6 +629,7 @@ export function syncModelPicker(root, footer, prefsOrEnabled, labels, findFooter
       close();
       orchestratorControl.dispose();
       effortBar?.setOpen(false);
+      try { renderAgentEntry(agentSlot, null, { panel, button, footer, zh: false }); } catch {}
       button.remove();
       panel.remove();
       trigger.removeAttribute('data-deck-model-bubble');
@@ -647,10 +657,30 @@ export function syncModelPicker(root, footer, prefsOrEnabled, labels, findFooter
         queuedEffort = null;
         if (queued && queued !== next.selected) queueMicrotask(() => void commitSelection(queued, 'effort'));
       }
-      const key = JSON.stringify([next.items || next.labels, next.selected, next.orchestrator, pending, currentHidden, currentHideTags, currentHideDefaultEffort, currentShowModelDots, currentEffortCaption, currentEffortOptions?.title]);
+      const agentKey = next.agents ? [next.agents.items.map(item => [item.name, item.description]), next.agents.selected, currentCaption] : null;
+      const key = JSON.stringify([next.items || next.labels, next.selected, next.orchestrator, pending, currentHidden, currentHideTags, currentHideDefaultEffort, currentShowModelDots, currentEffortCaption, currentEffortOptions?.title, agentKey]);
       if (key === signature) return;
       signature = key;
       hideSub();
+
+      // The custom-agent entry sits above the model list and only exists when the host offers custom agents.
+      // Follow the plugin's own UI language (the caption is localized), not the host page's.
+      const agentCtx = { panel, button, footer, zh: /[\u4e00-\u9fff]/.test(currentCaption) };
+      const agents = next.agents && {
+        ...next.agents,
+        choose(name) {
+          const result = next.agents.choose(name);
+          setTimeout(() => picker.sync(), 30);
+          return result;
+        },
+      };
+      agentSlot.hidden = !agents;
+      try {
+        renderAgentEntry(agentSlot, agents, agentCtx);
+      } catch {
+        agentSlot.replaceChildren();
+        agentSlot.hidden = true;
+      }
 
       const rawItems = Array.isArray(next.items) && next.items.length
         ? next.items

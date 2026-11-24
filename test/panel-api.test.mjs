@@ -90,3 +90,80 @@ test('protected data and host operations are registered only as POST; legacy GET
     assert.ok(routes.has('POST ' + path), path);
   }
 });
+
+test('App quota hides on explicit empty summary (e.g. custom gateway) but stays unhidden on fetch error and recovers', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'agy-quota-hide-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const saved = {
+    dir: process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR,
+    addr: process.env.ANTIGRAVITY_LS_ADDRESS,
+    csrf: process.env.ANTIGRAVITY_CSRF_TOKEN,
+  };
+  t.after(() => {
+    for (const [key, val] of [
+      ['ANTIGRAVITY_EXECUTABLE_DATA_DIR', saved.dir],
+      ['ANTIGRAVITY_LS_ADDRESS', saved.addr],
+      ['ANTIGRAVITY_CSRF_TOKEN', saved.csrf],
+    ]) {
+      if (val === undefined) delete process.env[key];
+      else process.env[key] = val;
+    }
+  });
+  process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR = root;
+  process.env.ANTIGRAVITY_LS_ADDRESS = '127.0.0.1:55828';
+  process.env.ANTIGRAVITY_CSRF_TOKEN = 'test-csrf';
+
+  let now = 100_000;
+  t.mock.method(Date, 'now', () => now);
+  let mode = 'error';
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (url.endsWith('/RetrieveUserQuotaSummary')) {
+      if (mode === 'error') return { ok: false, status: 500 };
+      if (mode === 'malformed-null') return { ok: true, json: async () => null };
+      if (mode === 'malformed-array') return { ok: true, json: async () => [] };
+      if (mode === 'empty') return { ok: true, json: async () => ({}) };
+      if (mode === 'empty-wrapped') return { ok: true, json: async () => ({ response: { groups: [] } }) };
+      return {
+        ok: true,
+        json: async () => ({ groups: [{ displayName: 'Gemini', buckets: [{ window: '5h', remainingFraction: 0.9 }] }] }),
+      };
+    }
+    if (url.endsWith('/GetUserStatus')) return { ok: false, status: 401 };
+    throw new Error('unexpected url: ' + url);
+  });
+
+  const { inspectConversation: inspect } = await import('../agy-capsule/sidecars/agy_capsule/server.mjs?quota-hide-test');
+
+  for (const bad of ['error', 'malformed-null', 'malformed-array']) {
+    mode = bad;
+    const res = await inspect();
+    assert.deepEqual(res.quotaGroups, []);
+    assert.equal(res.cloudPaygo, false);
+    assert.equal(res.hideQuota, false, bad);
+  }
+
+  mode = 'empty';
+  const onGatewayEmpty = await inspect();
+  assert.deepEqual(onGatewayEmpty.quotaGroups, []);
+  assert.equal(onGatewayEmpty.cloudPaygo, false);
+  assert.equal(onGatewayEmpty.hideQuota, true);
+
+  mode = 'error';
+  now += 10_001;
+  const onCachedError = await inspect();
+  assert.deepEqual(onCachedError.quotaGroups, []);
+  assert.equal(onCachedError.hideQuota, true, 'subsequent error keeps cached empty hidden state');
+
+  mode = 'empty-wrapped';
+  now += 10_001;
+  const onWrappedEmpty = await inspect();
+  assert.deepEqual(onWrappedEmpty.quotaGroups, []);
+  assert.equal(onWrappedEmpty.hideQuota, true);
+
+  mode = 'populated';
+  now += 10_001;
+  const onRecovered = await inspect();
+  assert.equal(onRecovered.quotaGroups.length, 1);
+  assert.equal(onRecovered.cloudPaygo, false);
+  assert.equal(onRecovered.hideQuota, false);
+});

@@ -25,9 +25,11 @@ test('IDE model quota preserves measured zero and ignores missing percentages', 
   assert.deepEqual(modelQuotas(''), []);
 });
 import { ideComposerSession } from '../ide/composer.mjs';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 test('IDE targets only this workspace chat iframe and its own ready server announcement', t => {
   const dir = mkdtempSync(join(tmpdir(), 'agy-ide-cdp-'));
@@ -47,4 +49,31 @@ test('IDE targets only this workspace chat iframe and its own ready server annou
   assert.equal(session.isComposerTarget({ url: url.href, type: 'page' }), false);
   url.searchParams.set('workspaceUri', 'file:///elsewhere');
   assert.equal(session.isComposerTarget({ url: url.href, type: 'iframe' }), false);
+});
+
+test('IDE packager includes every transitive module required by ide/extension.cjs', async t => {
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const python = process.platform === 'win32' ? 'python' : 'python3';
+  const listed = execFileSync(python, [join(repoRoot, 'scripts', 'package-ide.py'), '--list'], { encoding: 'utf8' })
+    .trim().split(/\r?\n/).filter(Boolean).map(line => line.split(' -> '));
+  const staged = mkdtempSync(join(tmpdir(), 'agy-ide-stage-'));
+  t.after(() => rmSync(staged, { recursive: true, force: true }));
+  const dstSet = new Set();
+  for (const [src, dst] of listed) {
+    dstSet.add(dst);
+    const target = join(staged, dst);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(repoRoot, src), target);
+  }
+  assert.ok(dstSet.has('agy-capsule/sidecars/agy_capsule/loopback_fetch.mjs'));
+  assert.ok(dstSet.has('agy-capsule/sidecars/agy_capsule/agent_entry.mjs'));
+  assert.ok(!dstSet.has('agy-capsule/sidecars/agy_capsule/server.mjs'));
+  for (const rel of [
+    'ide/host.mjs', 'ide/sidebar.mjs', 'ide/composer.mjs', 'ide/data_roots.mjs', 'ide/cloud.mjs', 'ide/billing.mjs',
+    'agy-capsule/sidecars/agy_capsule/deck_injector.mjs', 'agy-capsule/sidecars/agy_capsule/settings.mjs',
+    'agy-capsule/sidecars/agy_capsule/conversation_db.mjs', 'agy-capsule/sidecars/agy_capsule/sqlite_cache.mjs',
+    'agy-capsule/sidecars/agy_capsule/usage_history.mjs', 'agy-capsule/sidecars/agy_capsule/ui.mjs',
+  ]) {
+    await import(pathToFileURL(join(staged, rel)).href);
+  }
 });

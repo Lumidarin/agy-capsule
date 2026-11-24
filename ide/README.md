@@ -12,7 +12,7 @@ For **Antigravity IDE (the Standalone editor) 2.8.0**. The desktop App's install
 2. In the IDE, run **Extensions: Install from VSIX…** and pick the generated package, or run:
 
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\Antigravity IDE\bin\antigravity-ide.cmd" --install-extension .\dist\agy-capsule-ide-0.2.4.vsix --force
+   & "$env:LOCALAPPDATA\Programs\Antigravity IDE\bin\antigravity-ide.cmd" --install-extension .\dist\agy-capsule-ide-0.2.5.vsix --force
    ```
 
 3. Quit the IDE completely, then start it once with these arguments (a Windows Start-menu shortcut can keep them too):
@@ -52,7 +52,7 @@ By default only the **composer capsules** are shown: starting up, reloading, pin
 2. 用 IDE 的 **Extensions: Install from VSIX…** 选择生成的安装包，或运行：
 
    ```powershell
-   & "$env:LOCALAPPDATA\Programs\Antigravity IDE\bin\antigravity-ide.cmd" --install-extension .\dist\agy-capsule-ide-0.2.4.vsix --force
+   & "$env:LOCALAPPDATA\Programs\Antigravity IDE\bin\antigravity-ide.cmd" --install-extension .\dist\agy-capsule-ide-0.2.5.vsix --force
    ```
 
 3. 完全退出 IDE，再用下列参数启动一次（Windows 开始菜单快捷方式也可保留这两个参数）：

@@ -5,7 +5,7 @@ import { EFFORT_BAR_CSS, EFFORT_TRACK_MARKUP } from './effort_bar.mjs';
 import { createMotionThemes } from './motion_themes.mjs';
 import { createVersionPanel } from './version_ui.mjs';
 
-export const PANEL_VERSION = 169;
+export const PANEL_VERSION = 170;
 const presentation = createPresentation();
 
 const PV_SVG = {
@@ -1375,8 +1375,12 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
         block.innerHTML = name === 'activity' ? usageUi.activityHtml(usageData, views.activity) : usageUi.modelsHtml(usageData, views.models);
       }
     }
+    function canPollSidebar() {
+      // The host can keep a collapsed iframe at 0×0 and still report the document as visible.
+      return !document.hidden && window.innerWidth > 0 && window.innerHeight > 0;
+    }
     async function refreshUsage() {
-      if (usageBusy || savingSettings || panelLocked || !usageEnabled() || sidebarView !== 'stats' || Date.now() < usageDueAt) return;
+      if (!canPollSidebar() || usageBusy || savingSettings || panelLocked || !usageEnabled() || sidebarView !== 'stats' || Date.now() < usageDueAt) return;
       usageBusy = true;
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -2322,14 +2326,16 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
       quotaSig = sig;
     }
 
+    let pollOnReopen = false;
     async function refresh() {
-      if (panelLocked) return;
+      if (panelLocked || !canPollSidebar()) return;
       const convId = syncConversation();
       if (refreshing) return;
       refreshing = true;
       const requestedSettingsEpoch = settingsEpoch;
       const requestedConversationEpoch = conversationEpoch;
       const isCurrent = () => {
+        if (pollOnReopen || !canPollSidebar()) return false;
         syncConversation();
         return requestedConversationEpoch === conversationEpoch;
       };
@@ -2370,7 +2376,13 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
           sampleCount = 0;
           renderHealthNotice();
         }
-      } finally { refreshing = false; }
+      } finally {
+        refreshing = false;
+        if (pollOnReopen) {
+          pollOnReopen = false;
+          void refresh();
+        }
+      }
     }
 
     function renderData(d) {
@@ -2560,8 +2572,23 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
         control.disabled = busy || parentDisabled;
       }
     }
-    refresh();
-    setInterval(refresh, 1000);
+    let sidebarPollTimer = null;
+    function updateSidebarPolling() {
+      if (!canPollSidebar()) {
+        if (sidebarPollTimer !== null) clearInterval(sidebarPollTimer);
+        sidebarPollTimer = null;
+        pollOnReopen = false;
+        return;
+      }
+      if (sidebarPollTimer !== null) return;
+      sidebarPollTimer = setInterval(refresh, 1000);
+      // Do not overlap an in-flight request from before the pane was closed.
+      if (refreshing) pollOnReopen = true;
+      else void refresh();
+    }
+    window.addEventListener('resize', updateSidebarPolling);
+    document.addEventListener('visibilitychange', updateSidebarPolling);
+    updateSidebarPolling();
   </script>
 </body>
 </html>`;

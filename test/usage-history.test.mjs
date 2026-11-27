@@ -449,8 +449,12 @@ test('the model block renders effort-tier tooltips, stacked bars, paging control
 });
 
 // Minimal stand-in DOM for driving the sidebar page script in node:vm.
-function createSidebarStub() {
+function createSidebarStub(width, height) {
   const dom = { now: noon(11, 19), tick: null };
+  const windowListeners = new Map();
+  const documentListeners = new Map();
+  dom.emitWindow = type => windowListeners.get(type)?.();
+  dom.emitDocument = type => documentListeners.get(type)?.();
   const makeElement = (tag = 'div') => {
     const found = new Map();
     const attrs = new Map();
@@ -483,20 +487,23 @@ function createSidebarStub() {
   const body = makeElement('body');
   dom.document = {
     documentElement: makeElement('html'),
+    hidden: false,
     body,
     createElement: makeElement,
     getElementById: id => body.querySelector('#' + id),
     querySelector: sel => body.querySelector(sel),
     querySelectorAll: () => [],
-    addEventListener() {}, removeEventListener() {},
+    addEventListener(type, cb) { documentListeners.set(type, cb); },
   };
   dom.globals = {
     document: dom.document,
     navigator: { language: 'en', languages: ['en'] },
     location: { pathname: '/', search: '?conversationId=conv-active' },
     scrollY: 0, scrollTo() {},
+    innerWidth: width, innerHeight: height,
+    addEventListener(type, cb) { windowListeners.set(type, cb); },
     Date: class extends Date { static now() { return dom.now; } },
-    setInterval(cb) { dom.tick = cb; return 1; }, clearInterval() {},
+    setInterval(cb) { dom.tick = cb; return 1; }, clearInterval() { dom.tick = null; },
     console, URLSearchParams, AbortSignal,
   };
   return dom;
@@ -511,8 +518,8 @@ const snapshot = (prefs = {}) => ({
   quotaGroups: [{ displayName: 'Gemini Models', buckets: [{ window: '5h', remainingFraction: .58 }] }],
 });
 
-const openSidebar = async (data, usage, { onFetch } = {}) => {
-  const dom = createSidebarStub();
+const openSidebar = async (data, usage, { onFetch, width = 320, height = 500 } = {}) => {
+  const dom = createSidebarStub(width, height);
   const requests = [];
   const fetch = async (url, options) => {
     const body = JSON.parse(options.body || '{}');
@@ -543,13 +550,22 @@ const openSidebar = async (data, usage, { onFetch } = {}) => {
   const poll = async (seconds = 1) => {
     const before = activity.writes + models.writes;
     dom.now += seconds * 1000;
-    await dom.tick();
+    await dom.tick?.();
     await settle();
     return (activity.writes + models.writes) - before;
   };
   const usageCalls = () => requests.filter(req => req.method === 'POST' && req.url === '/api/usage');
+  const contextCalls = () => requests.filter(req => req.url === '/api/context');
+  const resize = (width, height) => {
+    Object.assign(context, { innerWidth: width, innerHeight: height });
+    dom.emitWindow('resize');
+  };
+  const setHidden = hidden => {
+    dom.document.hidden = hidden;
+    dom.emitDocument('visibilitychange');
+  };
   const click = dataset => listener({ target: { closest: () => ({ dataset, disabled: false }) } });
-  return { context, poll, settle, usageCalls, focused, root, click, activity, models };
+  return { context, poll, settle, usageCalls, contextCalls, resize, setHidden, focused, root, click, activity, models };
 };
 
 test('the sidebar leaves the history alone while it is off and reads it about once a minute while it is shown', async () => {
@@ -593,6 +609,61 @@ test('the sidebar leaves the history alone while it is off and reads it about on
   vm.runInContext("window.sidecar = { conversationId: '' };", context);
   await poll(60);
   assert.equal(usageCalls().at(-1).body.conversationId, '', 'explicit empty sidecar conversationId does not fall back to the URL query');
+});
+
+test('a collapsed sidebar stops context and history polling and refreshes once as soon as it reopens', async () => {
+  const data = snapshot({ showUsageActivity: true });
+  const usage = { enabled: true, ...history };
+  const { context, poll, settle, usageCalls, contextCalls, resize, setHidden, activity } = await openSidebar(data, usage, { width: 0, height: 0 });
+  assert.equal(contextCalls().length, 0, 'does not poll before the first open');
+  resize(320, 500);
+  await settle();
+  assert.equal(contextCalls().length, 1, 'opening does not wait for a timer tick');
+  await poll();
+  assert.equal(usageCalls().length, 1);
+
+  resize(0, 0);
+  for (let second = 0; second < 65; second++) await poll();
+  await vm.runInContext('refreshUsage()', context);
+  assert.equal(contextCalls().length, 2);
+  assert.equal(usageCalls().length, 1, 'even a direct history refresh cannot start while collapsed');
+
+  resize(320, 500);
+  resize(360, 500);
+  setHidden(false);
+  await settle();
+  assert.equal(contextCalls().length, 3, 'repeat resize and visibility events do not duplicate the reopen');
+  assert.equal(usageCalls().length, 2, 'history resumes when due');
+  assert.match(activity.innerHTML, /class="usage-heat"/);
+
+  setHidden(true);
+  await poll(65);
+  assert.equal(contextCalls().length, 3, 'a hidden document also suspends an otherwise sized panel');
+  assert.equal(usageCalls().length, 2);
+  setHidden(false);
+  await settle();
+  assert.equal(contextCalls().length, 4);
+  assert.equal(usageCalls().length, 3);
+});
+
+test('reopening during an in-flight context read queues one fresh read, without overlap', async () => {
+  const data = snapshot();
+  let releaseRead;
+  const inflight = new Promise(resolve => { releaseRead = resolve; });
+  let contextReads = 0;
+  const { settle, contextCalls, resize } = await openSidebar(data, {}, {
+    onFetch: async url => {
+      if (url === '/api/context' && ++contextReads === 1) await inflight;
+    },
+  });
+
+  resize(0, 0);
+  resize(320, 500);
+  resize(360, 500);
+  assert.equal(contextCalls().length, 1);
+  releaseRead();
+  await settle();
+  assert.equal(contextCalls().length, 2);
 });
 
 test('optimistic settings saves do not race /api/usage into a 10-second loading stall', async () => {

@@ -36,11 +36,15 @@ await test('Footer probe and capsules mount on all visible split composers and r
   const first = '11111111-1111-1111-1111-111111111111';
   const second = '22222222-2222-2222-2222-222222222222';
   const panel = (id, style, attrs = '', convId = '') => `<section ${attrs} style="${style}"><div id="${id}" data-testid="conversation-view"${convId ? ` data-cascade-id="${convId}"` : ''}><div class="agy-composer-footer"><div><button>Gemini</button></div></div></div></section>`;
+  await page.route('http://agy.test/**', route => route.fulfill({ body: '', contentType: 'text/html' }));
+  await page.goto('http://agy.test/');
   await page.setContent([
     panel('hidden', 'display:none'), panel('invisible', 'visibility:hidden'), panel('transparent', 'opacity:0'),
     panel('offscreen', 'position:fixed;left:110vw;width:950px'), panel('flat', 'width:0'),
-    panel('small', 'width:320px', 'data-pane-id="small" data-pane-unfocused', second),
-    panel('active', 'width:300px', 'data-pane-id="active"', first),
+    '<div style="display:flex;gap:24px;margin-top:260px">' +
+      panel('small', 'width:320px', 'data-pane-id="small" data-pane-unfocused', second) +
+      panel('active', 'width:300px', 'data-pane-id="active"', first) +
+    '</div>',
   ].join(''));
   await page.evaluate(buildRuntimeBundle(owner).code);
   const state = () => page.evaluate(owner => globalThis.__agyCapsuleDeck.readState(owner), owner);

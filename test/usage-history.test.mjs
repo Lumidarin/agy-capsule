@@ -449,12 +449,24 @@ test('the model block renders effort-tier tooltips, stacked bars, paging control
 });
 
 // Minimal stand-in DOM for driving the sidebar page script in node:vm.
-function createSidebarStub(width, height) {
+function createSidebarStub(width, height, withFx) {
   const dom = { now: noon(11, 19), tick: null };
   const windowListeners = new Map();
   const documentListeners = new Map();
-  dom.emitWindow = type => windowListeners.get(type)?.();
-  dom.emitDocument = type => documentListeners.get(type)?.();
+  const frameCallbacks = new Map();
+  let nextFrameId = 1;
+  const events = listeners => ({
+    addEventListener(type, cb) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type).add(cb);
+    },
+    emit(type) { for (const cb of listeners.get(type) ?? []) cb(); },
+  });
+  const windowEvents = events(windowListeners);
+  const documentEvents = events(documentListeners);
+  dom.emitWindow = windowEvents.emit;
+  dom.emitDocument = documentEvents.emit;
+  dom.pendingFrames = () => frameCallbacks.size;
   const makeElement = (tag = 'div') => {
     const found = new Map();
     const attrs = new Map();
@@ -480,6 +492,7 @@ function createSidebarStub(width, height) {
       replaceChildren(...nodes) { el.children = [...nodes]; },
       addEventListener() {}, removeEventListener() {},
       getBoundingClientRect: () => ({ left: 0, top: 0, right: 240, bottom: 24, width: 240, height: 24 }),
+      getContext: () => null,
       focus() {},
     };
     return el;
@@ -493,15 +506,22 @@ function createSidebarStub(width, height) {
     getElementById: id => body.querySelector('#' + id),
     querySelector: sel => body.querySelector(sel),
     querySelectorAll: () => [],
-    addEventListener(type, cb) { documentListeners.set(type, cb); },
+    addEventListener: documentEvents.addEventListener,
   };
+  if (withFx) {
+    const card = makeElement();
+    dom.document.getElementById('fx-orch-stage').closest = selector => selector === '.fx-preview-card' ? card : null;
+  }
   dom.globals = {
     document: dom.document,
     navigator: { language: 'en', languages: ['en'] },
     location: { pathname: '/', search: '?conversationId=conv-active' },
     scrollY: 0, scrollTo() {},
     innerWidth: width, innerHeight: height,
-    addEventListener(type, cb) { windowListeners.set(type, cb); },
+    addEventListener: windowEvents.addEventListener,
+    performance: { now: () => dom.now },
+    requestAnimationFrame(cb) { const id = nextFrameId++; frameCallbacks.set(id, cb); return id; },
+    cancelAnimationFrame(id) { frameCallbacks.delete(id); },
     Date: class extends Date { static now() { return dom.now; } },
     setInterval(cb) { dom.tick = cb; return 1; }, clearInterval() { dom.tick = null; },
     console, URLSearchParams, AbortSignal,
@@ -518,8 +538,8 @@ const snapshot = (prefs = {}) => ({
   quotaGroups: [{ displayName: 'Gemini Models', buckets: [{ window: '5h', remainingFraction: .58 }] }],
 });
 
-const openSidebar = async (data, usage, { onFetch, width = 320, height = 500 } = {}) => {
-  const dom = createSidebarStub(width, height);
+const openSidebar = async (data, usage, { onFetch, width = 320, height = 500, withFx = false } = {}) => {
+  const dom = createSidebarStub(width, height, withFx);
   const requests = [];
   const fetch = async (url, options) => {
     const body = JSON.parse(options.body || '{}');
@@ -565,7 +585,7 @@ const openSidebar = async (data, usage, { onFetch, width = 320, height = 500 } =
     dom.emitDocument('visibilitychange');
   };
   const click = dataset => listener({ target: { closest: () => ({ dataset, disabled: false }) } });
-  return { context, poll, settle, usageCalls, contextCalls, resize, setHidden, focused, root, click, activity, models };
+  return { context, poll, settle, usageCalls, contextCalls, resize, setHidden, pendingFrames: dom.pendingFrames, focused, root, click, activity, models };
 };
 
 test('the sidebar leaves the history alone while it is off and reads it about once a minute while it is shown', async () => {
@@ -644,6 +664,43 @@ test('a collapsed sidebar stops context and history polling and refreshes once a
   await settle();
   assert.equal(contextCalls().length, 4);
   assert.equal(usageCalls().length, 3);
+});
+
+test('the Models preview and polling both pause on collapse and visibility changes', async () => {
+  const { context, contextCalls, pendingFrames, resize, setHidden, settle, poll } =
+    await openSidebar(snapshot({ modelEffortPicker: true }), {}, { withFx: true });
+  const selectView = view => vm.runInContext('selectSidebarView(' + JSON.stringify(view) + ')', context);
+  selectView('fx');
+  assert.equal(pendingFrames(), 1);
+
+  resize(0, 0);
+  assert.equal(pendingFrames(), 0, 'cancels the queued animation even while the document is visible');
+  await poll(65);
+  assert.equal(contextCalls().length, 1);
+
+  resize(320, 500);
+  resize(360, 500);
+  setHidden(false);
+  assert.equal(pendingFrames(), 1, 'an open panel has exactly one animation loop');
+  await settle();
+  assert.equal(contextCalls().length, 2);
+
+  setHidden(true);
+  assert.equal(pendingFrames(), 0, 'the preview and polling visibility listeners both run');
+  await poll(65);
+  assert.equal(contextCalls().length, 2);
+  setHidden(false);
+  assert.equal(pendingFrames(), 1);
+  await settle();
+  assert.equal(contextCalls().length, 3);
+
+  selectView('stats');
+  assert.equal(pendingFrames(), 0);
+  resize(0, 0);
+  selectView('fx');
+  assert.equal(pendingFrames(), 0, 'activating Models while collapsed does not start an animation');
+  resize(360, 500);
+  assert.equal(pendingFrames(), 1);
 });
 
 test('reopening during an in-flight context read queues one fresh read, without overlap', async () => {

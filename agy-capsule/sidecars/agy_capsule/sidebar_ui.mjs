@@ -5,7 +5,7 @@ import { EFFORT_BAR_CSS, EFFORT_TRACK_MARKUP } from './effort_bar.mjs';
 import { createMotionThemes } from './motion_themes.mjs';
 import { createVersionPanel } from './version_ui.mjs';
 
-export const PANEL_VERSION = 170;
+export const PANEL_VERSION = 171;
 const presentation = createPresentation();
 
 const PV_SVG = {
@@ -1375,12 +1375,12 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
         block.innerHTML = name === 'activity' ? usageUi.activityHtml(usageData, views.activity) : usageUi.modelsHtml(usageData, views.models);
       }
     }
-    function canPollSidebar() {
+    function isSidebarVisible() {
       // The host can keep a collapsed iframe at 0×0 and still report the document as visible.
       return !document.hidden && window.innerWidth > 0 && window.innerHeight > 0;
     }
     async function refreshUsage() {
-      if (!canPollSidebar() || usageBusy || savingSettings || panelLocked || !usageEnabled() || sidebarView !== 'stats' || Date.now() < usageDueAt) return;
+      if (!isSidebarVisible() || usageBusy || savingSettings || panelLocked || !usageEnabled() || sidebarView !== 'stats' || Date.now() < usageDueAt) return;
       usageBusy = true;
       try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -1645,6 +1645,7 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
       };
 
       const paintOnce = now => {
+        if (!isSidebarVisible()) return;
         const curPrefs = prefs;
         const themePref = curPrefs.effortTheme || 'auto';
         const gTheme = curPrefs.geminiTheme || 'physical';
@@ -1755,7 +1756,7 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
       };
 
       const loop = now => {
-        if (!active || document.hidden || isReduced()) {
+        if (!active || !isSidebarVisible() || isReduced()) {
           rafId = 0;
           return;
         }
@@ -1764,16 +1765,14 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
       };
 
       const start = () => {
-        if (!active || document.hidden) return;
+        if (!active || !isSidebarVisible() || rafId) return;
         syncDomMeta();
         if (isReduced()) {
           paintOnce(performance.now());
           return;
         }
-        if (!rafId) {
-          lastNow = performance.now();
-          rafId = requestAnimationFrame(loop);
-        }
+        lastNow = performance.now();
+        rafId = requestAnimationFrame(loop);
       };
 
       const stop = () => {
@@ -1916,24 +1915,22 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
         }
       });
 
-      document.addEventListener('visibilitychange', () => {
-        if (active && !document.hidden) start();
+      const syncPreviewVisibility = () => {
+        if (isSidebarVisible()) start();
         else stop();
-      });
+      };
+      window.addEventListener('resize', syncPreviewVisibility);
+      document.addEventListener('visibilitychange', syncPreviewVisibility);
 
       return {
         setActive(next) {
           const flag = next && prefs.modelEffortPicker === true;
           previewCard.inert = prefs.modelEffortPicker !== true;
-          if (next && !flag && !document.hidden) paintOnce(performance.now());
+          if (next && !flag) paintOnce(performance.now());
           if (flag === active) return;
           active = flag;
-          if (active) {
-            syncDomMeta();
-            start();
-          } else {
-            stop();
-          }
+          if (active) start();
+          else stop();
         },
         syncPrefs(nextPrefs) {
           const sig = JSON.stringify([
@@ -2328,14 +2325,14 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
 
     let pollOnReopen = false;
     async function refresh() {
-      if (panelLocked || !canPollSidebar()) return;
+      if (panelLocked || !isSidebarVisible()) return;
       const convId = syncConversation();
       if (refreshing) return;
       refreshing = true;
       const requestedSettingsEpoch = settingsEpoch;
       const requestedConversationEpoch = conversationEpoch;
       const isCurrent = () => {
-        if (pollOnReopen || !canPollSidebar()) return false;
+        if (pollOnReopen || !isSidebarVisible()) return false;
         syncConversation();
         return requestedConversationEpoch === conversationEpoch;
       };
@@ -2574,7 +2571,7 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
     }
     let sidebarPollTimer = null;
     function updateSidebarPolling() {
-      if (!canPollSidebar()) {
+      if (!isSidebarVisible()) {
         if (sidebarPollTimer !== null) clearInterval(sidebarPollTimer);
         sidebarPollTimer = null;
         pollOnReopen = false;
